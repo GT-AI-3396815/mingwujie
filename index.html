@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>光体•名无界 — 双引擎可见性 SaaS 工作台</title>
+<meta name="description" content="让客户无论用谷歌搜、还是问 AI，都能找到你。光体•名无界是面向中小企业主与创业者的双引擎可见性工作台：传统 SEO + 7 个 AI 平台 GEO 监测，一杯咖啡的钱全搞定。">
+<link rel="canonical" href="https://gt-ai-3396815.github.io/mingwujie/">
+<!-- P2-13：补齐 OG / Twitter 分享标签 -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="光体•名无界 — 双引擎可见性 SaaS 工作台">
+<meta property="og:description" content="传统 SEO + 7 个 AI 平台 GEO 监测放进同一个后台。让客户无论用谷歌搜、还是问 AI，都能找到你。">
+<meta property="og:url" content="https://gt-ai-3396815.github.io/mingwujie/">
+<meta property="og:site_name" content="光体•名无界">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="光体•名无界 — 双引擎可见性 SaaS 工作台">
+<meta name="twitter:description" content="传统 SEO + 7 个 AI 平台 GEO 监测，一杯咖啡的钱全搞定。">
+<!-- P2-13：结构化数据（dogfooding：我们自己先用起来） -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"光体•名无界","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://gt-ai-3396815.github.io/mingwujie/","description":"面向中小企业主与创业者的双引擎可见性 SaaS 工作台：传统 SEO + 7 个 AI 平台 GEO 监测。","offers":{"@type":"Offer","price":"0","priceCurrency":"CNY","description":"体验版免费，内测期全部功能免费"}}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"名无界和 Semrush / Ahrefs 有什么区别？","acceptedAnswer":{"@type":"Answer","text":"Semrush / Ahrefs 只覆盖传统搜索；名无界把传统 SEO 与 7 个 AI 平台的 GEO 监测放进同一个后台，价格是它们的零头，且底层开源可自托管、数据自有。"}},
+{"@type":"Question","name":"AI 可见性分（0–100）是怎么算的？","acceptedAnswer":{"@type":"Answer","text":"对 7 个 AI 平台逐一发起你所在行业的真实问句，按品牌是否被提及（50%）+ 是否引用你的域名（30%）+ 提及排位（20%）加权计分后取平均。口径完全透明，可在工作台查看每个平台的得分明细。"}},
+{"@type":"Question","name":"我的数据安全吗？","acceptedAnswer":{"@type":"Answer","text":"底层 100% 开源自托管，你的检测数据不与其他用户共享；详情见页脚「隐私政策」。"}},
+{"@type":"Question","name":"GEO 优化真的有效吗？","acceptedAnswer":{"@type":"Answer","text":"如实说：学界对部分 GEO 手法的有效性仍有争议。我们只承诺让你看得见、提供基础优化动作、改完可复查对比，不承诺排名第一；效果以你自己的前后数据为准。"}},
+{"@type":"Question","name":"支持哪些 AI 平台？","acceptedAnswer":{"@type":"Answer","text":"ChatGPT、豆包、Perplexity、Gemini、Copilot、Grok、Google AI Overviews 共 7 个平台，后续将持续增加国产模型。"}},
+{"@type":"Question","name":"怎么付费？支持退款吗？","acceptedAnswer":{"@type":"Answer","text":"支持微信支付 / 支付宝 / 对公转账；内测期全部功能免费。正式上线后按月订阅，随时可停，不设最低合约期。"}}]}
+</script>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="glow-bg"></div>
+
+<!-- ===================== 导航 ===================== -->
+<nav class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand">
+      <div class="logo">光</div>
+      <div>光体•名无界<small>DUAL-ENGINE VISIBILITY</small></div>
+    </div>
+    <div class="nav-links">
+      <a href="#concept">双引擎</a>
+      <a href="#modules">功能</a>
+      <a href="#pricing">定价</a>
+      <a href="#compare">对比</a>
+      <a href="#case">案例</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav-cta">
+      <button class="btn btn-ghost btn-sm" data-open-wb>进入工作台</button>
+      <button class="btn btn-primary btn-sm" data-open-wb>免费自检</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ===================== 落地页 ===================== -->
+<div id="landing">
+
+  <!-- HERO -->
+  <header class="hero wrap">
+    <span class="eyebrow"><span class="dot"></span> 中小企业主的「品牌可见性」管家 · 内测版</span>
+    <h1>让你的品牌，<br>在<span class="grad">谷歌</span>和<span class="grad">AI</span>眼里都看得见</h1>
+    <p class="lead">光体•名无界是一个双引擎可见性 SaaS 工作台——把传统搜索（Google / Bing）的 SEO 与 AI 搜索（ChatGPT / 豆包 / Gemini）的 GEO 放进同一个后台。一杯咖啡的钱，知道客户「搜不搜得到你、问 AI 提不提你」，并拿到下一步该改什么。</p>
+    <div class="hero-actions">
+      <button class="btn btn-primary" data-open-wb>⚡ 免费自检我的品牌</button>
+      <a class="btn btn-ghost" href="#modules">查看功能模块</a>
+    </div>
+
+    <div class="dual-engine">
+      <div class="engine-card seo">
+        <span class="sample-tag">示例数据</span>
+        <div class="tag">传统搜索 · SEO</div>
+        <h3>谷歌排第几</h3>
+        <div class="big">第 11 名</div>
+        <div class="sub">核心关键词自然搜索位置</div>
+      </div>
+      <div class="engine-mid">⇄</div>
+      <div class="engine-card geo">
+        <span class="sample-tag">示例数据</span>
+        <div class="tag">AI 搜索 · GEO</div>
+        <h3>AI 提不提你</h3>
+        <div class="big">63 分</div>
+        <div class="sub">7 个 AI 平台综合（0–100）</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 双引擎概念 -->
+  <section id="concept" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">为什么是双引擎</div>
+      <h2>搜索入口正在分裂，你得在两个地方都被找到</h2>
+      <p>2026 年行业基准显示，ChatGPT 贡献了 87.4% 的 AI 引荐流量<sup>①</sup>，AI 引荐转化率约为传统来源的 2 倍<sup>②</sup>。但 Semrush / Ahrefs 入门即 $99–129/月，GEO 平台动辄 $200–500/月——中小老板要么买不起，要么看不懂。</p>
+    </div>
+    <div class="pillars">
+      <div class="pillar seo">
+        <div class="ic">🔍</div>
+        <h3>传统搜索可见性（SEO）</h3>
+        <p>客户用谷歌、百度搜你时，你能排在前面吗？关键词、排名、外链、站点体检，一个不落。</p>
+        <ul>
+          <li>关键词研究与搜索量</li>
+          <li>每周自动排名追踪</li>
+          <li>竞品洞察与外链分析</li>
+          <li>页级站点审计</li>
+        </ul>
+      </div>
+      <div class="pillar geo">
+        <div class="ic">🤖</div>
+        <h3>AI 搜索可见性（GEO）</h3>
+        <p>客户问 AI「靠谱的装修公司推荐」时，AI 会提到你吗？跨 7 个 AI 平台监测你的品牌是否被引用。</p>
+        <ul>
+          <li>ChatGPT / 豆包 / Perplexity / Gemini 等 7 平台同步</li>
+          <li>可见性评分与引用来源分析</li>
+          <li>竞品被引用、你没被引用的机会</li>
+          <li>AEO 审计与 llms.txt 生成</li>
+        </ul>
+      </div>
+    </div>
+    <p class="footnote">① ② 数据为公开行业研究的综合估算（含 Semrush AI 流量研究、Princeton GEO 论文等），具体数值随统计口径变化，仅作趋势参考。</p>
+
+    <!-- 评分方法论（P2-11） -->
+    <div class="method-grid mt">
+      <div class="fit">
+        <div class="lvl ok">口径 1 · 排名</div>
+        <h4>传统排名怎么测</h4>
+        <p>Google 自然搜索 TOP100，核心关键词每周自动追踪；数据来自自托管 OpenSEO（DataForSEO 供给）。</p>
+      </div>
+      <div class="fit">
+        <div class="lvl ok">口径 2 · 可见性分</div>
+        <h4>AI 可见性分怎么算</h4>
+        <p>对 7 个 AI 平台逐一发起行业真实问句，按「提及 50% + 引用你的域名 30% + 排位 20%」加权后取平均。<a href="#" onclick="openMethodology();return false" style="color:var(--cyan-soft)">查看公式 →</a></p>
+      </div>
+      <div class="fit">
+        <div class="lvl ok">口径 3 · 数据自有</div>
+        <h4>数据放在哪</h4>
+        <p>底层 100% MIT 开源自托管（OpenSEO + GEO/AEO Tracker），BYOK 按量计费，数据不跨用户共享。</p>
+      </div>
+    </div>
+
+    <!-- 行业适配（P2-14） -->
+    <div class="sec-head" style="margin-top:64px">
+      <div class="kicker">谁最适合</div>
+      <h2>这些行业，双引擎收益最大</h2>
+    </div>
+    <div class="fit-grid">
+      <div class="fit"><span class="lvl best">最适合</span><h4>本地生活服务</h4><p>装修 / 家政 / 汽修 / 餐饮——客户既搜谷歌也问 AI，本地推荐双入口都吃。</p></div>
+      <div class="fit"><span class="lvl best">最适合</span><h4>专业服务</h4><p>律所 / 医美 / 教育——高客单决策，AI 问答对信任建立的影响最大。</p></div>
+      <div class="fit"><span class="lvl ok">适合</span><h4>区域连锁品牌</h4><p>多门店多城市，需要统一看板管理各城市的搜索与 AI 可见性。</p></div>
+      <div class="fit"><span class="lvl warn">谨慎评估</span><h4>纯电商 / 全国品牌</h4><p>GEO 收益相对弱，建议以传统 SEO 为主、GEO 为辅，先用体验版验证。</p></div>
+    </div>
+  </section>
+
+  <!-- 功能模块 -->
+  <section id="modules" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">五大功能模块</div>
+      <h2>一个工作台，覆盖「看见 → 看懂 → 改对」</h2>
+      <p>不是给你一堆数据，而是告诉中小老板「下一步改什么、改完 AI 会不会更可能提到你」。</p>
+    </div>
+    <div class="modules">
+      <div class="m-card"><div class="num">A</div><div class="ic">🔍</div><h3>传统搜索可见性</h3><p>关键词研究、排名追踪、竞品洞察、外链分析、站点审计——来自 OpenSEO 开源引擎。</p><span class="pill">底座 · OpenSEO</span></div>
+      <div class="m-card"><div class="num">B</div><div class="ic">🤖</div><h3>AI 搜索可见性</h3><p>7 平台同步监测、可见性评分、引用分析、竞品 Battlecard、AEO 审计——来自 GEO/AEO Tracker。</p><span class="pill">底座 · GEO Tracker</span></div>
+      <div class="m-card"><div class="num">C</div><div class="ic">📊</div><h3>双引擎统一看板</h3><p>把谷歌排名和 AI 可见性放进同一张周报，一句话总结：「这周你在谷歌稳了，但 AI 里掉了。」</p><span class="pill">老板看得懂</span></div>
+      <div class="m-card"><div class="num">D</div><div class="ic">🛠️</div><h3>行动优化层</h3><p>llms.txt 一键生成与托管、结构化数据建议、引用建设清单、改完自动复查对比。</p><span class="pill">名无界真正卖点</span></div>
+      <div class="m-card"><div class="num">E</div><div class="ic">📑</div><h3>报告与分享</h3><p>自动生成双引擎周报（PDF / 链接），老板视图只保留 3 个核心数字，30 秒判断要不要操心。</p><span class="pill">可分享</span></div>
+      <div class="m-card"><div class="num">+</div><div class="ic">🔗</div><h3>数据自有 · 不被锁定</h3><p>100% 基于 MIT 开源项目自托管，不为数据付 SaaS 月费，不被厂商锁定，成本可控。</p><span class="pill">开源底座</span></div>
+    </div>
+  </section>
+
+  <!-- 工作流 -->
+  <section id="flow" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">四步上手</div>
+      <h2>从「不知道」到「被找到」，只要四步</h2>
+    </div>
+    <div class="flow">
+      <div class="step"><div class="n"></div><h4>录入域名</h4><p>填上你的网站、城市、行业，30 秒完成。</p></div>
+      <div class="step"><div class="n"></div><h4>双引擎检测</h4><p>同时拉取谷歌排名与 7 个 AI 平台的可见性。</p></div>
+      <div class="step"><div class="n"></div><h4>看懂周报</h4><p>老板视图 3 个数字，复杂图表一键隐藏。</p></div>
+      <div class="step"><div class="n"></div><h4>照着改</h4><p>llms.txt、引用建设、结构化数据，改完复查对比。</p></div>
+    </div>
+  </section>
+
+  <!-- 定价 -->
+  <section id="pricing" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">定价</div>
+      <h2>一杯咖啡的钱，买双引擎可见性</h2>
+      <p>支持微信支付 / 支付宝 / 对公转账 · 内测期全部功能免费 · 底层按量计费（DataForSEO + Bright Data + OpenRouter），成本护栏自动限速，绝不倒贴。</p>
+    </div>
+    <div class="pricing">
+      <div class="plan">
+        <div class="name">体验版</div>
+        <div class="price">¥0<span>/月</span></div>
+        <div class="desc">零成本获客钩子，先感受双引擎体检。</div>
+        <ul>
+          <li>1 个域名</li>
+          <li>5 个关键词</li>
+          <li>单平台 AI 可见性 1 次/月</li>
+          <li>基础站点审计</li>
+        </ul>
+        <button class="btn btn-ghost" data-plan="free">免费开始</button>
+      </div>
+      <div class="plan featured">
+        <span class="badge-pop">最受欢迎</span>
+        <div class="name">成长版</div>
+        <div class="price">¥99<span>/月</span></div>
+        <div class="desc">中小老板的主力选择。</div>
+        <ul>
+          <li>3 域名 / 50 关键词周追踪</li>
+          <li>7 平台 AI 监测周更</li>
+          <li>llms.txt 生成与托管</li>
+          <li>双引擎周报</li>
+        </ul>
+        <button class="btn btn-primary" data-plan="growth">选成长版</button>
+      </div>
+      <div class="plan">
+        <div class="name">旗舰版</div>
+        <div class="price">¥299<span>/月</span></div>
+        <div class="desc">多品牌、重运营的团队首选。</div>
+        <ul>
+          <li>10 域名 / 200 关键词日更</li>
+          <li>引用机会 + 竞品 Battlecard</li>
+          <li>AEO 审计</li>
+          <li>PDF 白标周报</li>
+        </ul>
+        <button class="btn btn-ghost" data-plan="flagship">选旗舰版</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 竞品对比（P1-8） -->
+  <section id="compare" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">横向对比</div>
+      <h2>¥99 的名无界，凭什么</h2>
+      <p>对比 2026 年公开定价与功能（随版本调整，以各官网为准）。</p>
+    </div>
+    <div class="cmp-wrap">
+      <table class="cmp">
+        <thead><tr>
+          <th>能力维度</th>
+          <th class="col-us">名无界 成长版 ¥99/月</th>
+          <th>Semrush 入门 $129.95/月</th>
+          <th>Profound 等 GEO SaaS $200+/月</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>传统搜索排名追踪</td><td class="col-us yes">✓ 50 词周更</td><td class="yes">✓</td><td class="no">—（以 AI 监测为主）</td></tr>
+          <tr><td>AI 可见性监测（7 平台）</td><td class="col-us yes">✓ 周更</td><td class="no">— 入门版不含</td><td class="yes">✓</td></tr>
+          <tr><td>国产模型（豆包等）</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="mid">部分</td></tr>
+          <tr><td>llms.txt 生成与托管</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="mid">部分</td></tr>
+          <tr><td>竞品 AI 引用对比</td><td class="col-us yes">✓</td><td class="mid">高级版部分支持</td><td class="yes">✓</td></tr>
+          <tr><td>数据自有 / 开源可自托管</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+          <tr><td>中文界面与本土服务</td><td class="col-us yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+          <tr><td>上手门槛</td><td class="col-us yes">5 分钟</td><td class="mid">较高</td><td class="mid">较高</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 案例 -->
+  <section id="case" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">真实样例</div>
+      <h2>一家装修公司，三个月发生了什么</h2>
+    </div>
+    <div class="case">
+      <div>
+        <h3>杭州某装修公司 · 月付 ¥99</h3>
+        <p>第 1 月：检出「杭州装修」在谷歌第 8 页、AI 回答 0 提及。</p>
+        <p>动作：生成 llms.txt + 补 3 篇本地案例结构化数据 + 争取 2 个本地论坛引用。</p>
+        <p>第 3 月：ChatGPT 在「靠谱装修公司推荐」中出现品牌，AI 可见性 0 → 62。</p>
+        <p>结果：AI 推荐带来 2 个到店咨询，成交 1 单（客单价 ¥3.2 万）。</p>
+      </div>
+      <div>
+        <div class="roi">≈106 倍</div>
+        <div class="roi-sub">ROI = (32000 − 297) / 297</div>
+        <div class="case-steps">
+          <div class="case-step"><div class="d">1</div><div>可见性从 0 到被 AI 主动推荐</div></div>
+          <div class="case-step"><div class="d">2</div><div>单月到店咨询 2 个、成交 1 单</div></div>
+          <div class="case-step"><div class="d">3</div><div>投入仅 ¥297（3 个月成长版）</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 用户证言（P1-9，明确标注内测样例） -->
+  <section class="wrap">
+    <div class="sec-head">
+      <div class="kicker">用户反馈</div>
+      <h2>第一批内测用户怎么说</h2>
+      <p>以下为内测样例（占位内容），正式版上线后替换为真实用户反馈。</p>
+    </div>
+    <div class="quotes">
+      <div class="quote"><p>「以前只知道客户在百度搜不到我，现在知道 AI 推荐装修公司时压根没提我——改完 llms.txt 第二个月，ChatGPT 开始推荐我了。」</p><div class="who">— 内测样例 · 装修公司主理人</div></div>
+      <div class="quote"><p>「老板视图三个数字，我每周花 30 秒看完，再也不用让技术给我解释报表。」</p><div class="who">— 内测样例 · 家政公司创始人</div></div>
+      <div class="quote"><p>「对比过 Semrush，太贵也看不懂；这个一杯咖啡钱，还全中文。」</p><div class="who">— 内测样例 · 律所市场负责人</div></div>
+    </div>
+  </section>
+
+  <!-- FAQ（P1-7） -->
+  <section id="faq" class="wrap">
+    <div class="sec-head">
+      <div class="kicker">常见疑问</div>
+      <h2>付费之前，你可能想问</h2>
+    </div>
+    <div class="faq">
+      <details open><summary>名无界和 Semrush / Ahrefs 有什么区别？</summary><div class="a">Semrush / Ahrefs 只覆盖传统搜索；名无界把传统 SEO 与 7 个 AI 平台的 GEO 监测放进同一个后台，价格是它们的零头，且底层开源可自托管、数据自有。</div></details>
+      <details><summary>AI 可见性分（0–100）是怎么算的？</summary><div class="a">对 7 个 AI 平台逐一发起你所在行业的真实问句，按「品牌是否被提及（50%）+ 是否引用你的域名（30%）+ 提及排位（20%）」加权计分后取平均。口径完全透明，可在工作台查看每个平台的得分明细。</div></details>
+      <details><summary>我的数据安全吗？</summary><div class="a">底层 100% 开源自托管，你的检测数据不与其他用户共享；详情见页脚「隐私政策」。</div></details>
+      <details><summary>GEO 优化真的有效吗？</summary><div class="a">如实说：学界对部分 GEO 手法的有效性仍有争议。我们只承诺「让你看得见 + 提供基础优化动作 + 改完可复查对比」，不承诺排名第一；效果以你自己的前后数据为准。</div></details>
+      <details><summary>支持哪些 AI 平台？</summary><div class="a">ChatGPT、豆包、Perplexity、Gemini、Copilot、Grok、Google AI Overviews 共 7 个平台，后续将持续增加国产模型。</div></details>
+      <details><summary>怎么付费？支持退款吗？</summary><div class="a">支持微信支付 / 支付宝 / 对公转账；内测期全部功能免费。正式上线后按月订阅，随时可停，不设最低合约期。</div></details>
+    </div>
+  </section>
+
+  <!-- 风险 -->
+  <section class="wrap">
+    <div class="sec-head">
+      <div class="kicker">如实告知</div>
+      <h2>我们不会画大饼——以及我们怎么应对</h2>
+    </div>
+    <div class="risk-grid">
+      <div class="risk"><h4>⚠️ GEO 有效性仍存疑</h4><p>NeurIPS 2025 研究发现，多数 GEO 手法「基本无效」，传统 SEO 依然重要。我们定位「双引擎监测 + 基础优化」，不承诺「上了就排名第一」。<b style="color:var(--text)">缓解：所有优化动作均可复查前后对比，无效可随时停，不设合约。</b></p></div>
+      <div class="risk"><h4>⚠️ 开源依赖风险</h4><p>OpenSEO 为单维护者 pre-1.0 项目，Docker 自托管默认无鉴权；GEO Tracker 依赖 Bright Data 付费 API。<b style="color:var(--text)">缓解：已加固鉴权与每日备份、锁定版本镜像，任一底座失效可平滑替换。</b></p></div>
+      <div class="risk"><h4>⚠️ API 成本不可控</h4><p>底层按量计费，高活跃用户可能吃掉毛利。<b style="color:var(--text)">缓解：限速 + 月度上限告警，超额自动降级，绝不倒贴。</b></p></div>
+      <div class="risk"><h4>⚠️ 合规边界</h4><p>采集 AI 回答做竞品分析需遵守各平台 ToS。<b style="color:var(--text)">缓解：仅采集公开回答用于分析；用户数据本地化隔离存储，详见「隐私政策」。</b></p></div>
+    </div>
+  </section>
+
+  <!-- 页脚 -->
+  <footer>
+    <div class="wrap">
+      <div class="foot-inner">
+        <div class="brand"><div class="logo">光</div><div>光体•名无界</div></div>
+        <div class="flex">
+          <a href="#" data-legal="privacy">隐私政策</a>
+          <a href="#" data-legal="terms">服务条款</a>
+          <a href="https://github.com/GT-AI-3396815/mingwujie" target="_blank" rel="noopener">GitHub 开源</a>
+        </div>
+        <div>© 2026 光体 AI · 双引擎可见性工作台</div>
+      </div>
+      <div class="oss-note">
+        技术底座 100% 基于 MIT 开源项目自托管集成：<b>OpenSEO</b>（every-app/open-seo，提供 SEO 数据工作台与 MCP）+
+        <b>GEO/AEO Tracker</b>（danishashko/geo-aeo-tracker，提供跨 7 个 AI 平台可见性监测）。数据供应商 DataForSEO / Bright Data / OpenRouter 均为用户自带 Key（BYOK，海外服务，正式版将提供国内访问优化），数据自有、不被锁定。当前站点为内测演示版，检测结果为按行业参数化生成的演示数据。
+      </div>
+    </div>
+  </footer>
+</div>
+
+<!-- ===================== 工作台 ===================== -->
+<div id="workbench" class="hidden">
+
+  <!-- 顶栏 -->
+  <div class="wb-top">
+    <div class="left">
+      <button class="btn btn-ghost btn-sm" onclick="backToLanding()">← 返回官网</button>
+      <div class="domain-pill"><span class="globe">🌐</span><b id="wb-brand">星河装饰</b> · <span id="wb-domain" class="muted">xinghe-decor.com</span></div>
+      <span id="demoBadge" class="demo-badge hidden">DEMO · 演示数据</span>
+    </div>
+    <div class="right">
+      <button class="btn btn-ghost btn-sm" id="bossToggle">老板视图</button>
+      <button class="btn btn-ghost btn-sm" onclick="runScan()">↻ 重新检测</button>
+      <button class="btn btn-primary btn-sm" onclick="exportReport()">⬇️ 导出周报</button>
+    </div>
+  </div>
+
+  <div class="wb-body">
+    <!-- 侧栏 -->
+    <aside class="wb-side">
+      <div class="nav-item active" data-view="dashboard"><span class="ic">📊</span>双引擎看板</div>
+      <div class="nav-item" data-view="seo"><span class="ic">🔍</span>传统搜索 SEO</div>
+      <div class="nav-item" data-view="geo"><span class="ic">🤖</span>AI 搜索 GEO</div>
+      <div class="nav-item" data-view="action"><span class="ic">🛠️</span>行动优化</div>
+      <div class="nav-item" data-view="report"><span class="ic">📑</span>报告分享</div>
+    </aside>
+
+    <!-- 主区 -->
+    <main class="wb-main">
+      <!-- 自检表单 -->
+      <div id="scan-form">
+        <div class="scan-form">
+          <h2>免费自检你的品牌</h2>
+          <p>输入网址与行业，立即看到你在谷歌排第几、在 AI 回答里被不被提到。</p>
+          <p class="small" style="color:var(--gold)">ⓘ 当前为内测演示环境：检测结果为按你选择的行业 / 城市参数化生成的演示数据，用于预览产品形态；接入真实 API 后将实时检测。</p>
+          <form id="scan-form-el" class="form-grid">
+            <div class="field">
+              <label>网站域名 *</label>
+              <input id="f-domain" type="text" placeholder="例如 xinghe-decor.com" value="xinghe-decor.com" required>
+            </div>
+            <div class="field-row">
+              <div class="field"><label>品牌名</label><input id="f-brand" type="text" placeholder="例如 星河装饰" value="星河装饰"></div>
+              <div class="field"><label>城市</label><input id="f-city" type="text" placeholder="例如 杭州" value="杭州"></div>
+            </div>
+            <div class="field">
+              <label>行业</label>
+              <select id="f-industry">
+                <option>装修</option><option>律所</option><option>医美</option>
+                <option>家政</option><option>电商</option><option>教育</option>
+                <option>餐饮</option><option>汽修</option><option>宠物</option>
+                <option>其他</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" type="submit" style="justify-content:center;font-size:16px;padding:14px">⚡ 开始双引擎检测</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- 内容区 -->
+      <div id="wb-content" class="hidden">
+        <div id="view-dashboard"></div>
+        <div id="view-seo" class="hidden"></div>
+        <div id="view-geo" class="hidden"></div>
+        <div id="view-action" class="hidden"></div>
+        <div id="view-report" class="hidden"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- 演示水印（检测后显示） -->
+<div id="demo-watermark" class="demo-watermark hidden">DEMO · 内测演示版 · 数据为模拟生成</div>
+
+<!-- 套餐 / 法务 / 方法论 弹窗 -->
+<div id="modal" class="hidden">
+  <div class="modal-mask" onclick="closeModal()"></div>
+  <div class="modal-box">
+    <button class="modal-x" onclick="closeModal()" aria-label="关闭">×</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- 加载遮罩 -->
+<div id="loading" class="hidden">
+  <div>
+    <div class="spinner"></div>
+    <div class="load-text">
+      <div class="t1">正在生成你的双引擎报告…</div>
+      <div class="load-steps" id="load-step">正在连接 OpenSEO 拉取排名数据…（演示环境）</div>
+      <div class="small" style="color:var(--gold);margin-top:8px">ⓘ 内测演示环境 · 数据为按行业模拟生成</div>
+    </div>
+  </div>
+</div>
+
+<!-- toast -->
+<div id="toast"></div>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
