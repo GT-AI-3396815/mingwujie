@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gt-ai-3396815.github.io/mingwujie/sitemap.xml
