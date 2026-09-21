@@ -14,6 +14,12 @@
 - D 行动优化层：llms.txt 一键生成 + 五类托管环境的部署指引 + 在线验证；按行业生成 JSON-LD 结构化数据；引用建设清单（可增删、勾选进度持久化）。
 - E 报告与分享：双引擎周报（浅色可打印 HTML，可转 PDF）、CSV 数据导出、微信分享文案。
 
+## 真实站点体检（无需 API Key）
+- 浏览器直接请求站点的 llms.txt、robots.txt、sitemap.xml 与首页 HTML，并在本地解析，给出 0-100 的「技术就绪分」。
+- 检查项共 10 条：llms.txt 可访问性与品牌名匹配、robots.txt 是否屏蔽主流 AI 爬虫（GPTBot / OAI-SearchBot / ClaudeBot / PerplexityBot / Bytespider / Google-Extended / CCBot）、sitemap.xml 可访问性、Title 长度、Meta Description 长度、JSON-LD 结构化数据、OG 分享标签、H1 结构、移动端 viewport、HTML lang 声明。
+- 目标站点若不允许跨域读取，提供「手动粘贴内容」兜底，仍由同一套解析器真实分析，结果可复核。
+- 体检结果会回写到行动清单：llms.txt / robots.txt / sitemap / JSON-LD 四项可自动验证，改完重跑即更新状态。
+
 ## 使用流程（5 分钟上手）
 1. 输入网站域名、品牌名、城市、行业（可点「用示例数据体验」）。
 2. 约 30 秒得到双引擎检测结果（内测演示数据）。
@@ -36,6 +42,10 @@
 - 成长版 ¥99/月：3 域名 / 50 关键词周追踪、7 平台 AI 监测周更、llms.txt 生成与托管、双引擎周报、竞品 AI 引用对比。
 - 旗舰版 ¥299/月：10 域名 / 200 关键词日更、7 平台日更、引用机会 + 竞品 Battlecard、AEO 审计、PDF 白标周报。
 - 支持微信支付 / 支付宝 / 对公转账；内测期全部功能免费，不设最低合约期。
+
+## 数据来源与真实性
+- 【真实】技术就绪分、llms.txt / robots.txt / sitemap.xml 状态、首页 Title / Description / JSON-LD / OG / H1 / viewport / lang —— 由浏览器对该域名的真实 HTTP 请求加本地解析得出，用户可自行复核。
+- 【演示】关键词搜索量 / 难度 / CPC、Google 排名、7 个 AI 平台可见性 —— 需接入付费数据源（DataForSEO / Bright Data / 各模型 API），当前为按行业参数化生成的演示数据，界面内逐块明确标注，不构成对任何真实网站的实际检测结论。
 
 ## 数据与隐私
 - 内测阶段：所有检测数据仅保存在用户浏览器的本地存储（localStorage），不上传服务器，不跨用户共享；用户可一键清空。
