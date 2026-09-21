@@ -1,26 +1,25 @@
 /* ============================================================
-   光体•名无界 — 工作台逻辑（演示态 v0.3）
+   光体•名无界 — 工作台逻辑（v0.4）
    ------------------------------------------------------------
-   v0.3 主题：把「看数据」升级成「能动手做完」
-   - 最后一公里：llms.txt 生成 → 部署指引（5 种托管环境）→ 在线验证
-   - 数据持久化：localStorage 存站点列表 / 检测快照 / 勾选进度 / 自定义词
-   - 多站点：顶栏切换，各站点独立保存进度
-   - 检测历史：每次「重新检测」写入快照，看板显示本次 vs 上次真实变化
-   - 操作可用性：自定义关键词、竞品可编辑、指标释义与阈值、优先级行动清单
-   - 导出：CSV（给外包/财务）+ 浅色可打印 HTML 周报 + 微信分享文案
-   - 术语词典：全文专业词可点击查询
+   v0.4 主题：真实性 / 有效性 / 实时性 / 通畅性
+   - 【真实】新增「真实站点体检」：浏览器直接抓取 llms.txt、robots.txt、
+     sitemap.xml 与首页 HTML 并真实解析，给出可复现的「技术就绪分」。
+     跨域被拦时提供手动粘贴兜底，仍由本地解析器真实分析，不伪造。
+   - 【有效】体检结果自动回写行动清单：llms.txt / robots / sitemap / JSON-LD
+     四项可自动验证，改完重跑即变绿，不靠自我声称。
+   - 【实时】记录 lastScanAt，展示数据新鲜度、建议复核日期与检测时间轴。
+   - 【通畅】哈希路由（#/wb/geo 等）+ 浏览器前进后退 + 刷新保留视图 +
+     各视图独立滚动位置 + 弹窗焦点陷阱 + toast 队列。
    ------------------------------------------------------------
-   ⚠️ 集成点说明（MVP 演示阶段使用按行业参数化生成的演示数据）：
-   - 传统搜索(SEO) 数据来源 = OpenSEO 自托管 API
-       GET /api/openseo/keywords?domain=&kw=
-       GET /api/openseo/rankings?domain=&kw=
-       GET /api/openseo/backlinks?domain=
-       GET /api/openseo/audit?domain=
-   - AI 搜索(GEO) 数据来源 = GEO/AEO Tracker 自托管 API
-       POST /api/geo/scan  {domain, prompts}
-       GET  /api/geo/visibility?domain=
-       GET  /api/geo/citations?domain=
-   将 fetchBackend() 内的 buildDemoData(form) 换成真实 fetch 即可上线。
+   数据来源与真实性边界：
+   - 【真实】技术就绪分、llms.txt / robots.txt / sitemap.xml 状态、
+     首页 Title / Description / JSON-LD / OG / H1 / viewport / lang
+     → 由浏览器对本域名的真实 HTTP 请求 + 本地解析得出。
+   - 【演示】关键词搜索量 / 难度 / CPC / Google 排名 / 7 平台 AI 可见性
+     → 需付费数据源，以下集成点预留；界面已明确标注为演示数据。
+       SEO  = OpenSEO 自托管 API（GET /api/openseo/keywords|rankings|backlinks|audit）
+       GEO  = GEO/AEO Tracker 自托管 API（POST /api/geo/scan，GET /api/geo/visibility|citations）
+       替换 fetchBackend() 内的 buildDemoData(form) 即可切换为生产数据。
    ============================================================ */
 
 'use strict';
@@ -165,6 +164,305 @@ const DEPLOY = [
   }
 ];
 
+/* ============================================================
+   v0.4 新增：真实站点体检（不需要任何 API Key）
+   ------------------------------------------------------------
+   浏览器可以直接请求下列公开资源，只要目标站点允许跨域读取。
+   GitHub Pages / Vercel / Netlify / Cloudflare Pages 等静态托管对
+   静态资源默认返回 Access-Control-Allow-Origin: *，通常可直接读取：
+     https://域名/llms.txt      https://域名/robots.txt
+     https://域名/sitemap.xml   https://域名/（首页 HTML）
+   被跨域策略拦截时，降级为「手动粘贴内容」，仍由本地解析器真实分析，
+   不做任何伪造。
+   ============================================================ */
+
+/* 主流 AI 爬虫 UA（用于解析 robots.txt） */
+const AI_CRAWLERS = [
+  { ua: 'GPTBot', who: 'OpenAI / ChatGPT' },
+  { ua: 'OAI-SearchBot', who: 'OpenAI 搜索' },
+  { ua: 'ClaudeBot', who: 'Anthropic / Claude' },
+  { ua: 'PerplexityBot', who: 'Perplexity' },
+  { ua: 'Bytespider', who: '字节 / 豆包' },
+  { ua: 'Google-Extended', who: 'Google Gemini' },
+  { ua: 'CCBot', who: 'Common Crawl（多家模型语料）' }
+];
+
+const AUDIT_TIMEOUT = 9000;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* 带超时的文本抓取（失败一律返回结构化结果，不抛异常） */
+async function fetchText(url, ms) {
+  let ctrl = null, timer = null;
+  try {
+    if (typeof AbortController !== 'undefined') { ctrl = new AbortController(); timer = setTimeout(() => ctrl.abort(), ms || AUDIT_TIMEOUT); }
+    const r = await fetch(url, { cache: 'no-store', redirect: 'follow', signal: ctrl ? ctrl.signal : undefined });
+    const t = await r.text();
+    return { ok: r.ok, status: r.status, text: t };
+  } catch (e) {
+    return { ok: false, status: 0, text: '', error: (e && e.name === 'AbortError') ? 'timeout' : 'blocked' };
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+/* 纯函数：解析 robots.txt（可在 Node 中单测） */
+function parseRobotsTxt(text) {
+  const out = { groups: [], sitemaps: [] };
+  let cur = null;
+  String(text == null ? '' : text).split(/\r?\n/).forEach(function (rawLine) {
+    const line = rawLine.replace(/(^|\s)#.*$/, '').trim();
+    if (!line) return;
+    const i = line.indexOf(':');
+    if (i < 0) return;
+    const k = line.slice(0, i).trim().toLowerCase();
+    const v = line.slice(i + 1).trim();
+    if (k === 'user-agent') {
+      if (!cur || cur.rules.length) { cur = { agents: [], rules: [] }; out.groups.push(cur); }
+      cur.agents.push(v.toLowerCase());
+    } else if (k === 'allow' || k === 'disallow') {
+      if (!cur) { cur = { agents: ['*'], rules: [] }; out.groups.push(cur); }
+      cur.rules.push({ type: k, path: v });
+    } else if (k === 'sitemap') {
+      out.sitemaps.push(v);
+    }
+  });
+  return out;
+}
+
+/* 纯函数：某个 UA 是否被全站屏蔽（blocked / allowed / unmentioned） */
+function checkCrawlerAccess(parsed, ua) {
+  const key = String(ua).toLowerCase();
+  const exact = parsed.groups.filter(g => g.agents.indexOf(key) >= 0);
+  const wild = parsed.groups.filter(g => g.agents.indexOf('*') >= 0);
+  const groups = exact.length ? exact : wild;
+  if (!groups.length) return 'unmentioned';
+  let blocked = false, allowed = false;
+  groups.forEach(function (g) {
+    g.rules.forEach(function (r) {
+      // 只判定「全站级」规则：路径为空(Disallow:)表示允许，'/' 表示全站
+      if (r.type === 'allow' && (r.path === '/' || r.path === '')) allowed = true;
+      if (r.type === 'disallow' && r.path === '/') blocked = true;
+    });
+  });
+  if (blocked && !allowed) return 'blocked';
+  return 'allowed';
+}
+
+/* 纯函数：解析首页 head（可在 Node 中单测） */
+function parseHead(html) {
+  const t = String(html == null ? '' : html);
+  const titleM = t.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleM ? titleM[1].replace(/\s+/g, ' ').trim() : '';
+  const descTag = t.match(/<meta[^>]+name=["']description["'][^>]*>/i);
+  let desc = '';
+  if (descTag) { const c = descTag[0].match(/content=["']([\s\S]*?)["']/i); desc = c ? c[1].trim() : ''; }
+  const h1Count = (t.match(/<h1[\s>]/gi) || []).length;
+  const jsonLdCount = (t.match(/<script[^>]+type=["']application\/ld\+json["']/gi) || []).length;
+  const ogTitle = /<meta[^>]+property=["']og:title["']/i.test(t);
+  const ogImage = /<meta[^>]+property=["']og:image["']/i.test(t);
+  const hasViewport = /<meta[^>]+name=["']viewport["']/i.test(t);
+  const langM = t.match(/<html[^>]+lang=["']([^"']+)["']/i);
+  const canonical = /<link[^>]+rel=["']canonical["']/i.test(t);
+  return { title, desc, h1Count, jsonLdCount, ogTitle, ogImage, hasViewport, lang: langM ? langM[1] : '', canonical };
+}
+
+/* 纯函数：把体检项汇总成技术就绪分 */
+function auditScore(items) {
+  let decided = 0, earned = 0, total = 0;
+  items.forEach(function (it) {
+    total += it.weight;
+    if (it.status === 'blocked') return;
+    decided += it.weight;
+    if (it.status === 'pass') earned += it.weight;
+    else if (it.status === 'warn') earned += it.weight * 0.5;
+  });
+  return {
+    score: decided ? Math.round(earned / decided * 100) : null,
+    coverage: total ? Math.round(decided / total * 100) : 0,
+    decided: decided, total: total
+  };
+}
+
+/* 各体检项构造器 */
+function fileStatus(r) { return r.ok ? 'ok' : (r.status ? 'http' : 'unreachable'); }
+
+function itemLlms(r, brand, domain) {
+  const base = { id: 'llms', name: 'llms.txt 可访问性', cat: 'ai', weight: 15 };
+  const st = fileStatus(r);
+  if (st === 'unreachable') return Object.assign(base, { status: 'blocked', detail: '浏览器无法直接读取（跨域限制或站点不可达）。可用下方「手动粘贴」把文件内容贴进来，由本地解析器真实分析。', fix: '确认 https://' + domain + '/llms.txt 能在浏览器里直接打开' });
+  if (st === 'http') return Object.assign(base, { status: 'fail', detail: '请求返回 HTTP ' + r.status + ' —— 文件不存在、路径不对或权限不足。', fix: '把 llms.txt 放到网站根目录（与 index.html 同级），确保访问返回 200' });
+  const t = r.text;
+  if (t.trim().length < 60) return Object.assign(base, { status: 'warn', detail: '文件存在，但内容只有 ' + t.trim().length + ' 字符，信息量不足，AI 难以据此理解你的业务。', fix: '补上「提供的服务 / 擅长领域 / 服务城市 / 常见问题」四段，建议 300 字符以上' });
+  const hasBrand = brand ? t.toLowerCase().indexOf(String(brand).toLowerCase()) >= 0 : false;
+  const hasDomain = t.indexOf(domain) >= 0;
+  if (!hasBrand && !hasDomain) return Object.assign(base, { status: 'warn', detail: '文件已上线（' + t.length + ' 字符），但内容里没有出现品牌名「' + esc(brand || '') + '」或域名，AI 可能对不上号。', fix: '在 llms.txt 开头用一句话写清「X 是 Y 城市的 Z 服务商」' });
+  return Object.assign(base, { status: 'pass', detail: '已上线（' + t.length + ' 字符），且包含品牌名 / 域名 ✓', fix: '' });
+}
+
+function itemRobots(r, domain) {
+  const base = { id: 'robots', name: 'robots.txt 是否屏蔽 AI 爬虫', cat: 'ai', weight: 15 };
+  const st = fileStatus(r);
+  if (st === 'unreachable') return Object.assign(base, { status: 'blocked', detail: '浏览器无法直接读取。可用下方「手动粘贴」贴入 robots.txt 内容解析。', fix: '确认 https://' + domain + '/robots.txt 能直接打开' });
+  if (st === 'http') return Object.assign(base, { status: 'warn', detail: '未找到 robots.txt（HTTP ' + r.status + '）。没有它不会阻止 AI 抓取，但你也失去了「明确欢迎 AI 引用」的声明机会。', fix: '新建 robots.txt，显式 Allow 主流 AI 爬虫，并用 Sitemap: 声明站点地图' });
+  const parsed = parseRobotsTxt(r.text);
+  const blocked = AI_CRAWLERS.filter(c => checkCrawlerAccess(parsed, c.ua) === 'blocked');
+  if (blocked.length) return Object.assign(base, { status: 'fail', detail: '发现 ' + blocked.length + ' 个主流 AI 爬虫被明确屏蔽：' + blocked.map(c => c.ua + '（' + c.who + '）').join('、') + '。这些 AI 将永远读不到你的站点内容。', fix: '删掉对应的 Disallow: / 规则。若只想阻止训练、保留引用，请用 Google-Extended / CCBot 单独控制，不要连 GPTBot、ClaudeBot、PerplexityBot 一起封' });
+  return Object.assign(base, { status: 'pass', detail: '7 个主流 AI 爬虫（GPTBot / OAI-SearchBot / ClaudeBot / PerplexityBot / Bytespider / Google-Extended / CCBot）均未被屏蔽 ✓', fix: '' });
+}
+
+function itemSitemap(r, domain) {
+  const base = { id: 'sitemap', name: 'sitemap.xml 可访问性', cat: 'ai', weight: 8 };
+  const st = fileStatus(r);
+  if (st === 'unreachable') return Object.assign(base, { status: 'blocked', detail: '浏览器无法直接读取。', fix: '确认 https://' + domain + '/sitemap.xml 能直接打开' });
+  if (st === 'http') return Object.assign(base, { status: 'fail', detail: '未找到 sitemap.xml（HTTP ' + r.status + '）—— 搜索引擎与 AI 缺少站点结构指引。', fix: '生成 sitemap.xml 放到根目录，并在 robots.txt 里用 Sitemap: 一行声明它' });
+  const n = (r.text.match(/<url>/g) || []).length;
+  return Object.assign(base, { status: 'pass', detail: '已上线' + (n ? '，含 ' + n + ' 条 URL' : '') + ' ✓', fix: '' });
+}
+
+function itemTitle(r, h) {
+  const base = { id: 'title', name: '首页 Title 标签', cat: 'seo', weight: 10 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。可用下方「手动粘贴」贴入首页源码解析。', fix: '' });
+  if (!h.title) return Object.assign(base, { status: 'fail', detail: '首页没有 <title> 标签。', fix: '补一个 title，格式建议「核心业务词 + 城市 + 品牌名」' });
+  const len = h.title.length;
+  if (len < 10) return Object.assign(base, { status: 'warn', detail: 'Title 偏短（' + len + ' 字符）：「' + esc(h.title) + '」，信息量不足。', fix: '扩到 15–30 个汉字，把「做什么 + 在哪 + 品牌」写进去' });
+  if (len > 60) return Object.assign(base, { status: 'warn', detail: 'Title 偏长（' + len + ' 字符），搜索结果里会被截断。', fix: '压缩到 30 个汉字以内，把最重要的词放最前面' });
+  return Object.assign(base, { status: 'pass', detail: '长度合适（' + len + ' 字符）：「' + esc(h.title) + '」✓', fix: '' });
+}
+
+function itemDesc(r, h) {
+  const base = { id: 'desc', name: 'Meta Description', cat: 'seo', weight: 10 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。', fix: '' });
+  if (!h.desc) return Object.assign(base, { status: 'fail', detail: '首页缺少 meta description —— 搜索结果里会由引擎随机截取，点击率通常更低。', fix: '补一段 60–120 字的描述，把核心业务、服务城市、差异化卖点写清楚' });
+  const len = h.desc.length;
+  if (len < 40) return Object.assign(base, { status: 'warn', detail: 'Description 偏短（' + len + ' 字符）。', fix: '扩到 60–120 字' });
+  if (len > 200) return Object.assign(base, { status: 'warn', detail: 'Description 偏长（' + len + ' 字符），会被截断。', fix: '压缩到 120 字以内' });
+  return Object.assign(base, { status: 'pass', detail: '长度合适（' + len + ' 字符）✓', fix: '' });
+}
+
+function itemJsonLd(r, h) {
+  const base = { id: 'jsonld', name: 'JSON-LD 结构化数据', cat: 'seo', weight: 15 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。', fix: '' });
+  if (h.jsonLdCount === 0) return Object.assign(base, { status: 'fail', detail: '首页没有检测到任何 JSON-LD 结构化数据 —— AI 只能靠正文猜你是做什么的。', fix: '至少加一段 ' + 'LocalBusiness / Organization 类型的 JSON-LD（可在「行动优化」一键生成）' });
+  if (h.jsonLdCount === 1) return Object.assign(base, { status: 'pass', detail: '检测到 1 段 JSON-LD ✓', fix: '' });
+  return Object.assign(base, { status: 'pass', detail: '检测到 ' + h.jsonLdCount + ' 段 JSON-LD ✓', fix: '' });
+}
+
+function itemOg(r, h) {
+  const base = { id: 'og', name: 'OG / 社交分享标签', cat: 'seo', weight: 7 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。', fix: '' });
+  if (h.ogTitle && h.ogImage) return Object.assign(base, { status: 'pass', detail: 'og:title 与 og:image 均已配置 ✓', fix: '' });
+  const miss = [];
+  if (!h.ogTitle) miss.push('og:title');
+  if (!h.ogImage) miss.push('og:image');
+  return Object.assign(base, { status: 'warn', detail: '缺少 ' + miss.join(' / ') + ' —— 被分享到微信、飞书等平台时标题和缩略图会不可控。', fix: '补齐 og:title / og:description / og:image 三个标签' });
+}
+
+function itemH1(r, h) {
+  const base = { id: 'h1', name: 'H1 标题结构', cat: 'seo', weight: 8 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。', fix: '' });
+  if (h.h1Count === 1) return Object.assign(base, { status: 'pass', detail: '恰好 1 个 H1 ✓', fix: '' });
+  if (h.h1Count === 0) return Object.assign(base, { status: 'warn', detail: '首页没有 H1 —— 页面主题不明确，AI 抓取时难以判断页面主旨。', fix: '给页面主标题套上 <h1>，并让其中包含核心业务词' });
+  return Object.assign(base, { status: 'warn', detail: '首页有 ' + h.h1Count + ' 个 H1，主题被分散。', fix: '只保留 1 个 H1 作为主标题，其余改为 H2 / H3' });
+}
+
+function itemViewport(r, h) {
+  const base = { id: 'viewport', name: '移动端 viewport', cat: 'tech', weight: 7 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。', fix: '' });
+  if (h.hasViewport) return Object.assign(base, { status: 'pass', detail: '已声明 viewport，移动端可正常缩放 ✓', fix: '' });
+  return Object.assign(base, { status: 'fail', detail: '缺少 viewport meta —— 手机上会以桌面宽度渲染，页面显示异常。', fix: '在 <head> 加入 <meta name="viewport" content="width=device-width, initial-scale=1">' });
+}
+
+function itemLang(r, h) {
+  const base = { id: 'lang', name: 'HTML lang 语言声明', cat: 'tech', weight: 5 };
+  if (!h) return Object.assign(base, { status: 'blocked', detail: '无法读取首页 HTML。', fix: '' });
+  if (h.lang) return Object.assign(base, { status: 'pass', detail: '已声明 lang="' + esc(h.lang) + '" ✓', fix: '' });
+  return Object.assign(base, { status: 'warn', detail: '<html> 未声明 lang 属性 —— 影响语音朗读与多语言识别。', fix: '写成 <html lang="zh-CN">' });
+}
+
+/* 执行一次真实体检 */
+async function runRealAudit(domain, brand, onStep) {
+  const base = 'https://' + domain;
+  const step = (s, pct) => { if (typeof onStep === 'function') onStep(s, pct); };
+  const items = [];
+
+  step('正在真实抓取 /llms.txt …', 22);
+  const llms = await fetchText(base + '/llms.txt');
+  items.push(itemLlms(llms, brand, domain));
+
+  step('正在抓取 /robots.txt 并检查 AI 爬虫是否被屏蔽…', 40);
+  const robots = await fetchText(base + '/robots.txt');
+  items.push(itemRobots(robots, domain));
+
+  step('正在检查 /sitemap.xml …', 54);
+  const sm = await fetchText(base + '/sitemap.xml');
+  items.push(itemSitemap(sm, domain));
+
+  step('正在解析首页 HTML（Title / Description / 结构化数据 / OG）…', 72);
+  const home = await fetchText(base + '/');
+  const head = home.ok ? parseHead(home.text) : null;
+  items.push(itemTitle(home, head));
+  items.push(itemDesc(home, head));
+  items.push(itemJsonLd(home, head));
+  items.push(itemOg(home, head));
+  items.push(itemH1(home, head));
+  items.push(itemViewport(home, head));
+  items.push(itemLang(home, head));
+
+  step('正在汇总技术就绪分…', 92);
+  const s = auditScore(items);
+  return { at: Date.now(), domain: domain, items: items, score: s.score, coverage: s.coverage, decided: s.decided, total: s.total, homeStatus: home.status || 0 };
+}
+
+/* 手动粘贴兜底：用真实内容替换被跨域拦截的项目 */
+function mergePastedAudit(kind, text) {
+  const site = state.site, d = state.data;
+  if (!site || !site.audit || !site.audit.items) { toast('请先执行一次站点抓取'); return; }
+  const brand = (site.form && site.form.brand) || '';
+  const domain = (site.form && site.form.domain) || '';
+  const map = {
+    llms: () => [itemLlms({ ok: true, status: 200, text: text }, brand, domain)],
+    robots: () => [itemRobots({ ok: true, status: 200, text: text }, domain)],
+    html: () => {
+      const h = parseHead(text);
+      const fake = { ok: true, status: 200 };
+      return [itemTitle(fake, h), itemDesc(fake, h), itemJsonLd(fake, h), itemOg(fake, h), itemH1(fake, h), itemViewport(fake, h), itemLang(fake, h)];
+    }
+  };
+  if (!map[kind]) return;
+  const fresh = map[kind]();
+  const ids = fresh.map(i => i.id);
+  site.audit.items = site.audit.items.filter(i => ids.indexOf(i.id) < 0).concat(fresh);
+  const s = auditScore(site.audit.items);
+  site.audit.score = s.score; site.audit.coverage = s.coverage; site.audit.decided = s.decided;
+  upsertSite(site);
+  state.data = composeData(site);
+  renderAll();
+  toast('已用你粘贴的内容完成真实解析（覆盖 ' + ids.length + ' 项）');
+}
+function pasteAuditLLMs() { const el = $('paste-llms'); if (!el) return; mergePastedAudit('llms', el.value); }
+function pasteAuditRobots() { const el = $('paste-robots'); if (!el) return; mergePastedAudit('robots', el.value); }
+function pasteAuditHtml() { const el = $('paste-html'); if (!el) return; mergePastedAudit('html', el.value); }
+
+/* 单独重跑体检 */
+async function rerunAudit() {
+  const site = state.site;
+  if (!site) { toast('请先完成一次检测'); return; }
+  const btn = $('audit-refresh');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 抓取中…'; }
+  const setStep = (s) => { const el = $('audit-progress'); if (el) el.textContent = s; };
+  try {
+    const a = await runRealAudit(site.form.domain, site.form.brand, setStep);
+    site.audit = a;
+    site.lastScanAt = a.at;
+    upsertSite(site);
+    state.data = composeData(site);
+    renderAll();
+    toast('真实抓取完成 · 技术就绪分 ' + (a.score === null ? '无法判定（全部被跨域拦截）' : a.score + ' 分（覆盖 ' + a.coverage + '%）'));
+  } catch (e) {
+    toast('抓取失败：' + (e && e.message ? e.message : '未知错误'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 重新真实抓取'; }
+  }
+}
+
 /* ----------------------- 演示数据生成 ----------------------- */
 function hashStr(s) {
   let h = 0;
@@ -252,17 +550,31 @@ function buildDemoData(form) {
   };
 }
 
-/* ----------------------- 本地存储（v0.3 新增） ----------------------- */
-const STORE_KEY = 'mwj.store.v3';
+/* ----------------------- 本地存储 ----------------------- */
+const STORE_KEY = 'mwj.store.v4';
+const STORE_KEY_OLD = 'mwj.store.v3';
 let store = { sites: [], current: '' };
 
+function normalizeSite(s) {
+  s.form = s.form || { domain: '', brand: '', city: '', industry: '其他' };
+  s.checks = s.checks || [];
+  s.opps = s.opps || null;
+  s.kws = s.kws || [];
+  s.competitor = s.competitor || '';
+  s.history = s.history || [];
+  s.audit = s.audit || null;
+  s.lastScanAt = s.lastScanAt || 0;
+  s.createdAt = s.createdAt || Date.now();
+  return s;
+}
 function loadStore() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    let raw = localStorage.getItem(STORE_KEY);
+    if (!raw) raw = localStorage.getItem(STORE_KEY_OLD);   // 从 v3 平滑迁移
     if (!raw) return false;
     const o = JSON.parse(raw);
     if (o && Array.isArray(o.sites)) {
-      store = { sites: o.sites, current: o.current || '' };
+      store = { sites: o.sites.map(normalizeSite), current: o.current || '' };
       return store.sites.length > 0;
     }
   } catch (e) { /* 存储损坏则忽略，避免阻断使用 */ }
@@ -282,7 +594,7 @@ function upsertSite(rec) {
   saveStore();
 }
 function newSiteRecord(form) {
-  return { form: form, checks: [], opps: null, kws: [], competitor: '', history: [], createdAt: Date.now() };
+  return { form: form, checks: [], opps: null, kws: [], competitor: '', history: [], audit: null, lastScanAt: 0, createdAt: Date.now() };
 }
 
 /* 把用户自定义内容叠加到演示数据上 */
@@ -300,12 +612,48 @@ function composeData(site) {
   if (site.competitor) {
     d.geo.battlecard.competitor.name = site.competitor;
   }
+  d.audit = site.audit || null;
+  d.lastScanAt = site.lastScanAt || 0;
   d.site = site;
   return d;
 }
 
+/* 时间与新鲜度 */
+function relTime(ts) {
+  if (!ts) return '未知';
+  const diff = Date.now() - ts;
+  if (diff < 0) return '刚刚';
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + ' 分钟前';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' 小时前';
+  const dd = Math.floor(h / 24);
+  return dd + ' 天前';
+}
+function freshness(ts) {
+  if (!ts) return { label: '未检测', cls: 'tag-red', days: null };
+  const dd = (Date.now() - ts) / 86400000;
+  if (dd < 1) return { label: '数据新鲜', cls: 'tag-green', days: dd };
+  if (dd < 7) return { label: '建议更新', cls: 'tag-amber', days: dd };
+  return { label: '数据已过期', cls: 'tag-red', days: dd };
+}
+function nextReviewAt(ts) { return ts ? ts + 7 * 86400000 : null; }
+function relFuture(ts) {
+  if (!ts) return '—';
+  const diff = ts - Date.now();
+  if (diff <= 0) return '就在今天';
+  const dd = Math.ceil(diff / 86400000);
+  return dd + ' 天后（' + fmtTime(ts).replace(/ .*$/, '') + '）';
+}
+
 /* ----------------------- 全局状态 ----------------------- */
-const state = { loaded: false, view: 'dashboard', boss: false, data: null, site: null, scanning: false, scanTimer: null, scanDone: false };
+const VIEWS = ['dashboard', 'audit', 'seo', 'geo', 'action', 'report'];
+const VIEW_LABEL = { dashboard: '双引擎看板', audit: '真实站点体检', seo: '传统搜索 SEO', geo: 'AI 搜索 GEO', action: '行动优化', report: '报告分享' };
+const state = {
+  loaded: false, view: 'dashboard', boss: false, data: null, site: null,
+  scanning: false, scanDone: false, scroll: {}, lastFocus: null, routing: false
+};
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -336,29 +684,83 @@ async function fetchBackend(form) {
   });
 }
 
-/* ----------------------- 导航 / 视图切换 ----------------------- */
-function openWorkbench() {
+/* ----------------------- 路由（哈希）与视图切换 ----------------------- */
+function mainEl() { return document.querySelector('.wb-main'); }
+
+function parseHash() {
+  const h = (location.hash || '').replace(/^#\/?/, '');
+  if (!h) return { area: 'landing', view: null };
+  if (h === 'wb') return { area: 'wb', view: null };
+  const m = h.match(/^wb\/([^\/]+)$/);
+  if (m) {
+    // 视图名无效时留在工作台并回落到看板，不把用户弹回官网
+    return { area: 'wb', view: VIEWS.indexOf(m[1]) >= 0 ? m[1] : 'dashboard' };
+  }
+  return { area: 'landing', view: null };
+}
+function setRoute(hash) {
+  if (location.hash === hash) return;
+  state.routing = true;
+  try { location.hash = hash; } catch (e) { /* ignore */ }
+  setTimeout(() => { state.routing = false; }, 0);
+}
+function showWorkbench() {
   $('landing').classList.add('hidden');
   $('workbench').classList.remove('hidden');
-  window.scrollTo(0, 0);
 }
-function backToLanding() {
+function showLanding() {
   $('workbench').classList.add('hidden');
   $('landing').classList.remove('hidden');
+}
+function openWorkbench(view) {
+  if (view) state.view = view;
+  showWorkbench();
+  setRoute('#/wb/' + state.view);
+  window.scrollTo(0, 0);
+  const m = mainEl(); if (m) m.scrollTop = 0;
+}
+function backToLanding() {
+  showLanding();
+  setRoute('#/');
   window.scrollTo(0, 0);
 }
-function switchTab(name) {
+function switchTab(name, fromRoute) {
+  if (VIEWS.indexOf(name) < 0) name = 'dashboard';
+  // 记住离开时的滚动位置
+  if (state.loaded && state.view && state.scroll) {
+    const m = mainEl();
+    state.scroll[state.view] = { main: m ? m.scrollTop : 0, win: window.scrollY || 0 };
+  }
   state.view = name;
   document.querySelectorAll('.nav-item').forEach(n => {
     const on = n.dataset.view === name;
     n.classList.toggle('active', on);
     n.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  ['dashboard', 'seo', 'geo', 'action', 'report'].forEach(v => {
+  VIEWS.forEach(v => {
     const el = $('view-' + v);
     if (el) el.classList.toggle('hidden', v !== name);
   });
+  if (!fromRoute) setRoute('#/wb/' + name);
   if (state.loaded) renderCurrent();
+  // 恢复该视图的滚动位置
+  if (state.scroll && state.scroll[name]) {
+    const m = mainEl();
+    const s = state.scroll[name];
+    if (m && m.scrollHeight > m.clientHeight + 8) m.scrollTop = s.main || 0;
+    else window.scrollTo(0, s.win || 0);
+  }
+  const t = $('view-title-now'); if (t) t.textContent = VIEW_LABEL[name] || '';
+}
+function applyRoute() {
+  if (state.routing) return;
+  const r = parseHash();
+  if (r.area === 'wb') {
+    showWorkbench();
+    if (r.view) switchTab(r.view, true);
+  } else {
+    showLanding();
+  }
 }
 function toggleBoss() {
   state.boss = !state.boss;
@@ -405,7 +807,7 @@ function switchSite(domain) {
   $('wb-brand').textContent = state.data.brand;
   $('scan-form').classList.add('hidden');
   $('wb-content').classList.remove('hidden');
-  showDemoMarks();
+  showDemoMarks(site.audit);
   renderSites();
   renderAll();
   toast('已切换到 ' + (state.data.brand || state.data.domain));
@@ -424,16 +826,33 @@ function removeCurrentSite() {
 function clearAllData() {
   closeModal();
   store = { sites: [], current: '' };
-  try { localStorage.removeItem(STORE_KEY); } catch (e) { }
+  try { localStorage.removeItem(STORE_KEY); localStorage.removeItem(STORE_KEY_OLD); } catch (e) { }
   resetScan();
   renderSites();
   $('demoBadge').classList.add('hidden');
   $('demo-watermark').classList.add('hidden');
+  const rb = $('realBadge'); if (rb) rb.classList.add('hidden');
   toast('已清空全部本地数据（浏览器本地存储）');
 }
-function showDemoMarks() {
+function showDemoMarks(audit) {
   const badge = $('demoBadge'); if (badge) badge.classList.remove('hidden');
   const wm = $('demo-watermark'); if (wm) wm.classList.remove('hidden');
+  const rb = $('realBadge');
+  if (rb) {
+    const a = audit || (state.data && state.data.audit);
+    const site = state.site;
+    if (a && a.score !== null) {
+      rb.classList.remove('hidden');
+      rb.className = 'real-badge ' + freshness(site ? site.lastScanAt : a.at).cls.replace('tag-', 'rb-');
+      rb.textContent = '✓ 真实抓取 · 技术就绪 ' + a.score + ' 分 · ' + relTime(site ? site.lastScanAt : a.at);
+    } else if (a) {
+      rb.classList.remove('hidden');
+      rb.className = 'real-badge rb-warn';
+      rb.textContent = '⚠ 站点未开放跨域读取 · 可手动粘贴解析';
+    } else {
+      rb.classList.add('hidden');
+    }
+  }
 }
 
 /* ----------------------- 表单 ----------------------- */
@@ -462,7 +881,7 @@ function validateDomain(silent) {
 }
 
 /* ----------------------- 检测流程 ----------------------- */
-function runScan(e) {
+async function runScan(e) {
   if (e) e.preventDefault();
   if (state.scanning) return;
   const raw = ($('f-domain').value || '').trim();
@@ -480,63 +899,78 @@ function runScan(e) {
   state.scanning = true;
   state.scanDone = false;
   $('loading').classList.remove('hidden');
-  const steps = [
-    '正在连接 OpenSEO 拉取排名数据…',
-    '正在向 7 个 AI 平台发起可见性探测…',
-    '正在分析引用来源与竞品 Battlecard…',
-    '正在生成双引擎周报与行动清单…'
-  ];
-  let i = 0, pct = 0;
-  $('load-step').textContent = steps[0];
-  const fill = $('load-bar-fill'); if (fill) fill.style.width = '4%';
-  state.scanTimer = setInterval(() => {
-    i = (i + 1) % steps.length;
-    pct = Math.min(92, pct + 11);
-    $('load-step').textContent = steps[i];
-    if (fill) fill.style.width = pct + '%';
-  }, 420);
+  const fill = $('load-bar-fill');
+  let curPct = 4;
+  const setStep = (s, pct) => {
+    const el = $('load-step'); if (el) el.textContent = s;
+    if (typeof pct === 'number') curPct = Math.max(curPct, pct);
+    if (fill) fill.style.width = curPct + '%';
+  };
+  setStep('正在准备检测…', 6);
 
-  fetchBackend({ domain: domain, brand: brand, city: city, industry: industry }).then(d => {
-    clearInterval(state.scanTimer);
-    if (state.scanDone) return;         // 用户已取消
-    state.scanning = false;
-    if (fill) fill.style.width = '100%';
+  const t0 = Date.now();
+  try {
+    // 真实抓取（真进度）与演示数据并行
+    const auditPromise = runRealAudit(domain, brand, setStep);
+    const d = await fetchBackend({ domain: domain, brand: brand, city: city, industry: industry });
+    if (state.scanDone) return;
+    const audit = await auditPromise;
+    if (state.scanDone) return;
+
+    // 保证加载动画不至于一闪而过
+    const elapsed = Date.now() - t0;
+    if (elapsed < 1400) await sleep(1400 - elapsed);
+    if (state.scanDone) return;
+    setStep('正在生成双引擎周报与行动清单…', 96);
+    await sleep(220);
+    if (state.scanDone) return;
+    state.scanning = false;   // 必须复位，否则「重新检测」按钮会永久失效
 
     // 写入 / 更新站点记录
     const site = getSite(domain) || newSiteRecord({ domain: domain, brand: brand, city: city, industry: industry });
     site.form = { domain: domain, brand: brand, city: city, industry: industry };
-    if (!site.checks || !site.checks.length) site.checks = [];
+    if (!site.checks) site.checks = [];
+    site.audit = audit;
+    site.lastScanAt = audit && audit.at ? audit.at : Date.now();
     // 历史快照：每次检测记录一次，用于「改完复查」真实对比
     site.history = site.history || [];
-    site.history.push({ t: Date.now(), overall: d.geo.overall, rank: Math.min.apply(null, Object.values(d.seo.currentRank)) });
-    if (site.history.length > 12) site.history = site.history.slice(-12);
+    site.history.push({
+      t: site.lastScanAt,
+      overall: d.geo.overall,
+      rank: Math.min.apply(null, Object.values(d.seo.currentRank)),
+      tech: audit ? audit.score : null,
+      coverage: audit ? audit.coverage : 0
+    });
+    if (site.history.length > 24) site.history = site.history.slice(-24);
 
     state.site = site;
     state.data = composeData(site);   // 先补全 opportunities 等派生字段
     upsertSite(site);                 // 再落盘，保证存下来的是完整记录
     state.loaded = true;
     state.actionDone = (site.checks || []).filter(Boolean).length;
+    if (fill) fill.style.width = '100%';
     $('loading').classList.add('hidden');
     $('wb-domain').textContent = state.data.domain;
     $('wb-brand').textContent = state.data.brand;
     $('scan-form').classList.add('hidden');
     $('wb-content').classList.remove('hidden');
-    showDemoMarks();
+    showDemoMarks(audit);
     renderSites();
     switchTab('dashboard');
     renderAll();
-    toast('双引擎检测完成 · 演示数据（已保存到本地，刷新不丢失）');
-  }).catch(err => {
-    clearInterval(state.scanTimer);
+    const real = audit && audit.score !== null;
+    toast(real
+      ? '检测完成 · 真实抓取技术就绪分 ' + audit.score + ' 分（覆盖 ' + audit.coverage + '%）· 排名与 AI 可见性为演示数据'
+      : '检测完成 · 站点未开放跨域读取，体检可改用「手动粘贴」解析');
+  } catch (err) {
     state.scanning = false;
     $('loading').classList.add('hidden');
     toast('检测失败：' + (err && err.message ? err.message : '未知错误') + '，请重试');
-  });
+  }
 }
 function cancelScan() {
   state.scanDone = true;
   state.scanning = false;
-  clearInterval(state.scanTimer);
   $('loading').classList.add('hidden');
   toast('已取消本次检测');
 }
@@ -600,9 +1034,9 @@ function legendOf(series) {
 }
 
 /* ----------------------- 渲染：总调度 ----------------------- */
-function renderAll() { renderDashboard(); renderSEO(); renderGEO(); renderAction(); renderReport(); }
+function renderAll() { renderDashboard(); renderAudit(); renderSEO(); renderGEO(); renderAction(); renderReport(); }
 function renderCurrent() {
-  const map = { dashboard: renderDashboard, seo: renderSEO, geo: renderGEO, action: renderAction, report: renderReport };
+  const map = { dashboard: renderDashboard, audit: renderAudit, seo: renderSEO, geo: renderGEO, action: renderAction, report: renderReport };
   if (map[state.view]) map[state.view]();
 }
 
@@ -630,13 +1064,26 @@ function renderDashboard() {
   const last = sinceLastScan(site, d);
   const seoDelta = d.seo.rankTrend.series[0].data[0] - d.seo.rankTrend.series[0].data[7];
   const aiDelta = d.geo.history[7] - d.geo.history[0];
+  const a = d.audit;
+  const fr = freshness(site ? site.lastScanAt : 0);
   let html = '';
+
+  // 数据来源标示：把「真实」和「演示」分清楚，不让用户误会
+  html += '<div class="source-bar">' +
+    '<span class="sb-chip real">🛰️ 真实抓取</span>' +
+    '<span class="sb-txt">技术就绪分、llms.txt / robots.txt / sitemap 状态均为浏览器实际请求所得</span>' +
+    '<span class="sb-chip ' + fr.cls + '">' + fr.label + ' · ' + relTime(site ? site.lastScanAt : 0) + '</span>' +
+    '</div>';
+  html += '<div class="source-bar" style="margin-top:-10px">' +
+    '<span class="sb-chip demo">DEMO</span>' +
+    '<span class="sb-txt">关键词搜索量、Google 排名、7 平台 AI 可见性为按行业参数化生成的演示数据（需付费数据源）</span>' +
+    '</div>';
 
   if (state.boss) {
     html += '<div class="boss-view">' +
       '<div class="boss-num"><div class="b-label">谷歌最佳排名</div><div class="b-value cyan">第 ' + topRank + ' 名</div><div class="small muted">核心关键词自然搜索</div></div>' +
       '<div class="boss-num"><div class="b-label">AI 可见性分</div><div class="b-value violet">' + aiScore + '</div><div class="small muted">7 个 AI 平台综合（0–100）</div></div>' +
-      '<div class="boss-num"><div class="b-label">行动清单完成</div><div class="b-value gold">' + doneN + '/' + opps.length + '</div><div class="small muted">勾选状态已保存</div></div></div>';
+      '<div class="boss-num"><div class="b-label">技术就绪分</div><div class="b-value gold">' + (a && a.score !== null ? a.score : '—') + '</div><div class="small muted">真实抓取 · 覆盖 ' + (a ? a.coverage : 0) + '%</div></div></div>';
     html += '<div class="summary-bar">' + d.summary + '</div>';
     if (last) {
       html += '<div class="card"><h3>🔁 与上次检测对比</h3><div class="card-sub">上次检测：' + fmtTime(last.when) + '</div>' +
@@ -653,10 +1100,22 @@ function renderDashboard() {
   html += '<div class="stat-grid">' +
     '<div class="stat"><div class="label">谷歌最佳排名</div><div class="value" style="color:var(--cyan)">第 ' + topRank + ' 名</div><div class="delta up">↑ 较首周 +' + seoDelta + ' 位</div></div>' +
     '<div class="stat"><div class="label">AI 可见性分</div><div class="value" style="color:var(--violet-soft)">' + aiScore + '</div><div class="delta up">↑ 较首周 +' + aiDelta + '</div></div>' +
-    '<div class="stat"><div class="label">被引用域名</div><div class="value">' + d.geo.citationDomains.filter(c => c.you).length + '</div><div class="delta">个来源提到你</div></div>' +
+    '<div class="stat"><div class="label">技术就绪分 <span class="tag-mini tag-green" style="font-size:10px">真实</span></div><div class="value" style="color:var(--gold)">' + (a && a.score !== null ? a.score : '—') + '</div>' +
+    '<div class="delta ' + (a && a.score !== null && a.score >= 70 ? 'up' : '') + '">' + (a ? '抓取覆盖 ' + a.coverage + '%' : '尚未抓取') + '</div></div>' +
     '<div class="stat"><div class="label">待办优化</div><div class="value" style="color:var(--gold)">' + (opps.length - doneN) + '</div><div class="delta down">项未完成</div></div></div>';
 
   html += '<div class="summary-bar">' + d.summary + '</div>';
+
+  // 实时性：复核提醒
+  html += '<div class="card"><h3>🕒 数据新鲜度与复核节奏</h3><div class="card-sub">让「定期复查」变成习惯，而不是想起来才做</div>' +
+    '<div class="stat-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:6px">' +
+    '<div class="stat"><div class="label">上次检测</div><div class="value" style="font-size:20px">' + relTime(site ? site.lastScanAt : 0) + '</div><div class="delta muted">' + (site && site.lastScanAt ? fmtTime(site.lastScanAt) : '—') + '</div></div>' +
+    '<div class="stat"><div class="label">建议下次复核</div><div class="value" style="font-size:20px">' + relFuture(nextReviewAt(site ? site.lastScanAt : 0)) + '</div><div class="delta muted">每 7 天一次</div></div>' +
+    '<div class="stat"><div class="label">已累计检测</div><div class="value" style="font-size:20px">' + ((site && site.history) ? site.history.length : 0) + ' 次</div><div class="delta muted">历史可对比</div></div></div>' +
+    '<div class="copy-row"><button class="btn btn-primary btn-sm" onclick="runScan()">↻ 立即重新检测（含真实抓取）</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="switchTab(\'report\')">查看检测时间轴 →</button></div>' +
+    hint('为什么要定期复查', 'AI 的答案和搜索引擎排名都会变。只测一次看到的是快照，连续测才能看出"改了到底有没有用"。') +
+    '</div>';
 
   if (last) {
     html += '<div class="card"><h3>🔁 与上次检测对比</h3><div class="card-sub">上次检测：' + fmtTime(last.when) + ' · 这是你「改完复查」的闭环依据</div>' +
@@ -695,6 +1154,126 @@ function buildActionPlan(d) {
     { prio: 'P2', prioCls: 'p2', t: '修复站点技术问题（断链 / 重复标题 / 缺 meta）', why: '技术底子不干净会拖累所有优化的效果上限', eff: '中', diff: '低', eta: '30 分钟' },
     { prio: 'P2', prioCls: 'p2', t: '建立每月复查节奏', why: '把"检测 → 优化 → 复查"变成固定动作，才能看到趋势', eff: '中', diff: '低', eta: '每月 5 分钟' }
   ];
+}
+
+/* ----------------------- 模块 F：真实站点体检（v0.4 新增） ----------------------- */
+function auditTag(status) {
+  if (status === 'pass') return '<span class="tag-mini tag-green">✓ 通过</span>';
+  if (status === 'warn') return '<span class="tag-mini tag-amber">! 待改进</span>';
+  if (status === 'fail') return '<span class="tag-mini tag-red">✗ 未通过</span>';
+  return '<span class="tag-mini tag-grey">－ 无法自动读取</span>';
+}
+function auditRow(it) {
+  return '<div class="list-item audit-row"><div class="bullet" style="background:' +
+    (it.status === 'pass' ? 'var(--green)' : it.status === 'warn' ? 'var(--amber)' : it.status === 'fail' ? 'var(--red)' : 'var(--muted-2)') +
+    '"></div><div style="flex:1"><div class="li-title">' + it.name + ' ' + auditTag(it.status) + '</div>' +
+    '<div class="li-sub">' + it.detail + '</div>' +
+    (it.fix ? '<div class="li-sub" style="color:var(--cyan-soft)">怎么改：' + it.fix + '</div>' : '') +
+    '</div></div>';
+}
+function renderAudit() {
+  if (!state.data) { renderEmpty('view-audit'); return; }
+  const d = state.data, site = d.site, a = d.audit;
+  const fr = freshness(site ? site.lastScanAt : 0);
+  let html = '';
+
+  html += '<div class="source-bar">' +
+    '<span class="sb-chip real">🛰️ 真实抓取</span>' +
+    '<span class="sb-txt">llms.txt · robots.txt · sitemap.xml · 首页 HTML 由浏览器直接请求并解析</span>' +
+    '<span class="sb-chip ' + fr.cls + '">' + fr.label + ' · ' + relTime(site ? site.lastScanAt : 0) + '</span>' +
+    '</div>';
+
+  if (!a) {
+    html += '<div class="card" style="text-align:center;padding:48px 20px">' +
+      '<div style="font-size:38px;margin-bottom:12px">🩺</div><h3>还没有真实体检数据</h3>' +
+      '<p class="muted small mt mb">点击下方按钮，浏览器会真实请求你站点的 4 类公开资源并解析，全程不需要任何 API Key。</p>' +
+      '<button class="btn btn-primary btn-sm" id="audit-refresh" onclick="rerunAudit()">🔄 立即真实抓取</button>' +
+      '<div class="small muted mt" id="audit-progress"></div></div>';
+    $('view-audit').innerHTML = html;
+    return;
+  }
+
+  const groups = [
+    { key: 'ai', title: '🤖 AI 爬虫可达性', sub: '决定 ChatGPT / 豆包 / Perplexity 能不能读到你的站点' },
+    { key: 'seo', title: '🔍 搜索与社交可读性', sub: '搜索引擎与社交平台如何理解你的页面' },
+    { key: 'tech', title: '🧱 技术基础', sub: '页面本身是否符合现代规范' }
+  ];
+
+  html += '<div class="cols-2">' +
+    '<div class="card" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">' +
+    '<div>' + (a.score === null
+      ? '<div class="ring-empty">无法判定</div>'
+      : ring(a.score, a.score >= 70 ? '#34d399' : a.score >= 40 ? '#fbbf24' : '#fb7185', 150)) + '</div>' +
+    '<div><h3 style="margin-bottom:6px">技术就绪分</h3>' +
+    '<div class="card-sub">基于真实抓取结果加权（共 10 项检查）</div>' +
+    '<div class="small muted mt">检测覆盖度：<b style="color:' + (a.coverage >= 70 ? 'var(--green)' : a.coverage >= 40 ? 'var(--amber)' : 'var(--red)') + '">' + a.coverage + '%</b>' +
+    '　抓取时间：<b style="color:#fff">' + fmtTime(a.at) + '</b></div>' +
+    '<div class="small muted mt">' + (a.coverage >= 70
+      ? '覆盖度良好，这个分数可以直接作为优化基线。'
+      : '覆盖度偏低 —— 多数检查被跨域策略拦截，建议用下方「手动粘贴」补齐后再看分数。') + '</div>' +
+    '<div class="copy-row"><button class="btn btn-primary btn-sm" id="audit-refresh" onclick="rerunAudit()">🔄 重新真实抓取</button>' +
+    '<button class="btn btn-ghost btn-sm" onclick="exportCSV(\'audit\')">⬇️ 导出体检结果 CSV</button></div>' +
+    '<div class="small muted mt" id="audit-progress"></div>' +
+    '</div></div>' +
+    '<div class="card"><h3>📌 这份体检为什么可信</h3>' +
+    '<div class="card-sub">因为它不是你填的，是我们真的去抓的</div>' +
+    (function () {
+      const fails = a.items.filter(i => i.status === 'fail').length;
+      const warns = a.items.filter(i => i.status === 'warn').length;
+      const pass = a.items.filter(i => i.status === 'pass').length;
+      const blocked = a.items.filter(i => i.status === 'blocked').length;
+      return '<div class="stat-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">' +
+        '<div class="stat"><div class="label">通过</div><div class="value" style="color:var(--green);font-size:24px">' + pass + '</div></div>' +
+        '<div class="stat"><div class="label">待改进</div><div class="value" style="color:var(--amber);font-size:24px">' + warns + '</div></div>' +
+        '<div class="stat"><div class="label">未通过</div><div class="value" style="color:var(--red);font-size:24px">' + fails + '</div></div>' +
+        '<div class="stat"><div class="label">读不到</div><div class="value" style="color:var(--muted);font-size:24px">' + blocked + '</div></div></div>';
+    })() +
+    hint('和演示数据的区别', '这一页的每一项都是浏览器真实请求 ' + esc(d.domain) + ' 得到的（HTTP 状态码、文件内容、HTML 解析结果）。排名与 AI 可见性仍需付费数据源，因此那两块仍标注为演示数据。') +
+    '</div></div>';
+
+  groups.forEach(function (g, gi) {
+    const items = a.items.filter(i => i.cat === g.key);
+    if (!items.length) return;
+    html += '<div class="card"><h3>' + g.title + '</h3><div class="card-sub">' + g.sub + '</div>' +
+      items.map(auditRow).join('') + '</div>';
+  });
+
+  // 手动粘贴兜底
+  const blockedItems = a.items.filter(i => i.status === 'blocked');
+  html += '<div class="card"><h3>✍️ 手动粘贴兜底（跨域被拦时用）</h3>' +
+    '<div class="card-sub">部分站点不允许浏览器跨域读取。把内容复制粘贴进来，解析仍在你的浏览器里完成，数据不外传</div>' +
+    (blockedItems.length
+      ? '<div class="v-warn mb">有 ' + blockedItems.length + ' 项无法自动读取：' + blockedItems.map(i => i.name).join('、') + '。用下面的输入框补齐即可得到完整真实结果。</div>'
+      : '<div class="v-ok mb">本次全部检查均已自动读取，无需手动补齐。</div>') +
+    '<div class="paste-grid">' +
+    '<div><label class="paste-label">① 粘贴 llms.txt 内容</label>' +
+    '<textarea id="paste-llms" class="code-box" style="min-height:110px" placeholder="打开 https://' + esc(d.domain) + '/llms.txt ，全选复制后粘贴到这里"></textarea>' +
+    '<button class="btn btn-ghost btn-sm mt" onclick="pasteAuditLLMs()">解析 llms.txt</button></div>' +
+    '<div><label class="paste-label">② 粘贴 robots.txt 内容</label>' +
+    '<textarea id="paste-robots" class="code-box" style="min-height:110px" placeholder="打开 https://' + esc(d.domain) + '/robots.txt ，全选复制后粘贴到这里"></textarea>' +
+    '<button class="btn btn-ghost btn-sm mt" onclick="pasteAuditRobots()">解析 robots.txt（含 AI 爬虫屏蔽检查）</button></div>' +
+    '<div><label class="paste-label">③ 粘贴首页源码</label>' +
+    '<textarea id="paste-html" class="code-box" style="min-height:110px" placeholder="在首页按 Ctrl+U 查看源代码，全选复制后粘贴到这里"></textarea>' +
+    '<button class="btn btn-ghost btn-sm mt" onclick="pasteAuditHtml()">解析首页 head</button></div>' +
+    '</div></div>';
+
+  $('view-audit').innerHTML = html;
+}
+
+/* 检测历史时间轴（报告页用） */
+function renderTimeline(site) {
+  const h = (site && site.history) || [];
+  if (h.length < 1) return '<p class="muted small">还没有检测记录。</p>';
+  const rows = h.slice().reverse().map(function (r, idx) {
+    const prev = h.slice().reverse()[idx + 1];
+    const dv = prev ? r.overall - prev.overall : null;
+    return '<tr><td>' + fmtTime(r.t) + '</td>' +
+      '<td>' + r.overall + (dv === null ? '' : ' <span class="tag-mini ' + (dv >= 0 ? 'tag-green' : 'tag-red') + '">' + (dv >= 0 ? '+' : '') + dv + '</span>') + '</td>' +
+      '<td>第 ' + r.rank + ' 名</td>' +
+      '<td>' + (r.tech === null || r.tech === undefined ? '<span class="muted">—</span>' : r.tech + ' 分') + '</td>' +
+      '<td><span class="tag-mini ' + (r.coverage >= 70 ? 'tag-green' : r.coverage >= 40 ? 'tag-amber' : 'tag-red') + '">' + (r.coverage || 0) + '%</span></td></tr>';
+  }).join('');
+  return '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>检测时间</th><th>AI 可见性</th><th>最佳排名</th><th>技术就绪</th><th>抓取覆盖</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
 /* 模块 A：传统搜索可见性 */
@@ -825,6 +1404,33 @@ function aeoItem(color, title, sub) {
     '<div class="li-title">' + title + '</div><div class="li-sub">' + sub + '</div></div></div>';
 }
 
+/* 可自动验证的行动（由真实体检实时判定） */
+function renderAutoChecks(d, site) {
+  const a = d.audit;
+  const AUTO = [
+    { id: 'llms', label: '部署 llms.txt', how: '生成 → 下载 → 传到网站根目录（与 index.html 同级）' },
+    { id: 'robots', label: 'robots.txt 不屏蔽 AI 爬虫', how: '删除针对 GPTBot / ClaudeBot / PerplexityBot / Bytespider 的 Disallow: / 规则' },
+    { id: 'sitemap', label: 'sitemap.xml 可访问', how: '生成站点地图放到根目录，并在 robots.txt 用 Sitemap: 声明' },
+    { id: 'jsonld', label: '首页含 JSON-LD 结构化数据', how: '把下方「结构化数据」代码贴进页面 <head>' }
+  ];
+  const rows = AUTO.map(function (x) {
+    const it = (a && a.items) ? a.items.filter(i => i.id === x.id)[0] : null;
+    let badge, cls, dot;
+    if (!it) { badge = '尚未抓取'; cls = 'tag-grey'; dot = 'var(--muted-2)'; }
+    else if (it.status === 'pass') { badge = '✓ 已通过 · 自动验证'; cls = 'tag-green'; dot = 'var(--green)'; }
+    else if (it.status === 'warn') { badge = '! 部分通过'; cls = 'tag-amber'; dot = 'var(--amber)'; }
+    else if (it.status === 'fail') { badge = '✗ 未通过'; cls = 'tag-red'; dot = 'var(--red)'; }
+    else { badge = '－ 需手动粘贴'; cls = 'tag-grey'; dot = 'var(--muted-2)'; }
+    return '<div class="list-item"><div class="bullet" style="background:' + dot + '"></div><div style="flex:1">' +
+      '<div class="li-title">' + esc(x.label) + ' <span class="tag-mini ' + cls + '">' + badge + '</span></div>' +
+      '<div class="li-sub">做法：' + esc(x.how) + '</div></div></div>';
+  }).join('');
+  return '<div class="card"><h3>✅ 可自动验证的行动</h3>' +
+    '<div class="card-sub">这 4 项由真实抓取实时判定 —— 你今天改完，下次重跑就会变绿，不用自己说「做完了」</div>' + rows +
+    (a ? '' : hint('还没有体检数据', '先到「真实站点体检」跑一次抓取，这里才能自动判定。')) +
+    '<button class="btn btn-ghost btn-sm mt" onclick="switchTab(\'audit\')">前往真实站点体检 →</button></div>';
+}
+
 /* 模块 D：行动优化层 */
 function renderAction() {
   if (!state.data) { renderEmpty('view-action'); return; }
@@ -839,6 +1445,7 @@ function renderAction() {
     '<button class="link-btn" onclick="event.preventDefault();removeOpp(' + i + ')">删除</button></label>').join('');
 
   $('view-action').innerHTML =
+    renderAutoChecks(d, site) +
     '<div class="card" id="llms-card"><h3>📄 第一步：<span class="term" data-term="llms.txt" title="点击查看解释">llms.txt</span> 一键生成 + 部署</h3>' +
     '<div class="card-sub">AI 版 sitemap —— 告诉 ChatGPT / 豆包 / Perplexity 你的业务是什么（已按「' + esc(d.industry) + '」行业生成）</div>' +
     '<div class="copy-row">' +
@@ -915,20 +1522,51 @@ function buildJsonLd(d, cfg) {
 /* 模块 E：报告与分享 */
 function renderReport() {
   if (!state.data) { renderEmpty('view-report'); return; }
-  const d = state.data;
+  const d = state.data, site = d.site, a = d.audit;
+  const now = Date.now();
+  const passN = a ? a.items.filter(i => i.status === 'pass').length : 0;
+  const failN = a ? a.items.filter(i => i.status === 'fail').length : 0;
+  const warnN = a ? a.items.filter(i => i.status === 'warn').length : 0;
+  const blockedN = a ? a.items.filter(i => i.status === 'blocked').length : 0;
+
   $('view-report').innerHTML =
     '<div class="card" id="report-card">' +
     '<div class="flex" style="justify-content:space-between">' +
-    '<div><h3 style="margin:0">📑 双引擎周报</h3><div class="card-sub">' + esc(d.brand) + ' · ' + esc(d.domain) + ' · 自动生成 · 演示数据</div></div>' +
+    '<div><h3 style="margin:0">📑 双引擎周报</h3><div class="card-sub">' + esc(d.brand) + ' · ' + esc(d.domain) + ' · 生成于 ' + fmtTime(now) + '</div></div>' +
     '<span class="tag-mini tag-geo">本周</span></div>' +
     '<div class="boss-view mt">' +
     '<div class="boss-num"><div class="b-label">谷歌最佳排名</div><div class="b-value cyan">第 ' + Math.min.apply(null, Object.values(d.seo.currentRank)) + ' 名</div></div>' +
     '<div class="boss-num"><div class="b-label">AI 可见性分</div><div class="b-value violet">' + d.geo.overall + '</div></div>' +
-    '<div class="boss-num"><div class="b-label">被引用域名</div><div class="b-value gold">' + d.geo.citationDomains.filter(c => c.you).length + '</div></div></div>' +
+    '<div class="boss-num"><div class="b-label">技术就绪分</div><div class="b-value gold">' + (a && a.score !== null ? a.score : '—') + '</div></div></div>' +
     '<div class="summary-bar">' + d.summary + '</div>' +
-    '<div class="card-sub">7 平台得分（含豆包）</div>' +
+
+    '<h4 style="margin:22px 0 8px;font-size:15px">🔎 数据来源与时间戳（哪些真实、哪些演示，一张表说清）</h4>' +
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>数据块</th><th>来源</th><th>类型</th><th>时间</th></tr></thead><tbody>' +
+    '<tr><td>技术就绪分 / llms.txt / robots.txt / sitemap / 首页元数据</td><td>浏览器直接请求你的站点</td><td><span class="tag-mini tag-green">真实抓取</span></td><td>' + (a ? fmtTime(a.at) : '—') + '</td></tr>' +
+    '<tr><td>关键词搜索量 / 难度 / CPC</td><td>DataForSEO（演示）</td><td><span class="tag-mini tag-amber">演示数据</span></td><td>' + fmtTime(now) + '</td></tr>' +
+    '<tr><td>Google 排名</td><td>OpenSEO（演示）</td><td><span class="tag-mini tag-amber">演示数据</span></td><td>' + fmtTime(now) + '</td></tr>' +
+    '<tr><td>7 平台 AI 可见性 / 引用分析</td><td>GEO/AEO Tracker（演示）</td><td><span class="tag-mini tag-amber">演示数据</span></td><td>' + fmtTime(now) + '</td></tr>' +
+    '</tbody></table></div>' +
+
+    (a ? '<h4 style="margin:22px 0 8px;font-size:15px">🩺 站点体检摘要（真实抓取）</h4>' +
+      '<div class="stat-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:10px">' +
+      '<div class="stat"><div class="label">通过</div><div class="value" style="color:var(--green);font-size:24px">' + passN + '</div></div>' +
+      '<div class="stat"><div class="label">待改进</div><div class="value" style="color:var(--amber);font-size:24px">' + warnN + '</div></div>' +
+      '<div class="stat"><div class="label">未通过</div><div class="value" style="color:var(--red);font-size:24px">' + failN + '</div></div>' +
+      '<div class="stat"><div class="label">读不到</div><div class="value" style="color:var(--muted);font-size:24px">' + blockedN + '</div></div>' +
+      '<div class="stat"><div class="label">覆盖度</div><div class="value" style="font-size:24px">' + a.coverage + '%</div></div></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>检查项</th><th>结果</th><th>说明</th></tr></thead><tbody>' +
+      a.items.map(i => '<tr><td>' + i.name + '</td><td>' + auditTag(i.status) + '</td><td class="small muted">' + i.detail + '</td></tr>').join('') +
+      '</tbody></table></div>'
+      : '<div class="v-warn mt">尚未进行真实抓取，可在「真实站点体检」页跑一次。</div>') +
+
+    '<h4 style="margin:22px 0 8px;font-size:15px">🤖 7 平台得分（演示数据）</h4>' +
     barChart(d.geo.models.map(m => ({ label: m.name, value: m.score, color: m.mentioned ? '#8b5cf6' : '#475569' })), { h: 220 }) +
-    '<div class="copy-row">' +
+
+    '<h4 style="margin:22px 0 8px;font-size:15px">🕒 检测时间轴（累计 ' + ((site && site.history) ? site.history.length : 0) + ' 次）</h4>' +
+    renderTimeline(site) +
+
+    '<div class="copy-row mt">' +
     '<button class="btn btn-primary btn-sm" onclick="exportReport()">⬇️ 导出 HTML 周报（浅色 · 可直接打印/转 PDF）</button>' +
     '<button class="btn btn-ghost btn-sm" onclick="exportCSV(\'all\')">⬇️ 导出全部数据 CSV</button>' +
     '<button class="btn btn-ghost btn-sm" onclick="copyShareText()">📋 复制微信分享文案</button></div>' +
@@ -946,7 +1584,9 @@ function renderEmpty(viewId) {
 function resetScan() {
   $('wb-content').classList.add('hidden');
   $('scan-form').classList.remove('hidden');
+  setRoute('#/wb');
   window.scrollTo(0, 0);
+  const m = mainEl(); if (m) m.scrollTop = 0;
 }
 
 /* ----------------------- 行动层交互 ----------------------- */
@@ -1207,6 +1847,25 @@ function exportCSV(scope) {
     lines.push(['来源', '原因', '做法', '是否完成'].map(csvCell).join(','));
     (d.geo.opportunities || []).forEach(o => lines.push([o.url, o.reason, o.how || '', o.done ? '已完成' : '未完成'].map(csvCell).join(',')));
   }
+  if (scope === 'audit' || scope === 'all') {
+    const a = state.data.audit;
+    lines.push('【真实站点体检】' + (a ? '抓取时间 ' + fmtTime(a.at) + '，技术就绪分 ' + (a.score === null ? '无法判定' : a.score) + '，覆盖度 ' + a.coverage + '%' : '尚未抓取'));
+    lines.push(['检查项', '结果', '说明', '修复建议'].map(csvCell).join(','));
+    if (a) a.items.forEach(it => lines.push([
+      it.name,
+      it.status === 'pass' ? '通过' : it.status === 'warn' ? '待改进' : it.status === 'fail' ? '未通过' : '无法读取',
+      it.detail, it.fix || ''
+    ].map(csvCell).join(',')));
+    lines.push('');
+  }
+  if (scope === 'all') {
+    lines.push('【检测时间轴】');
+    lines.push(['检测时间', 'AI 可见性', '最佳排名', '技术就绪分', '抓取覆盖度%'].map(csvCell).join(','));
+    ((state.data.site && state.data.site.history) || []).forEach(h => lines.push([
+      fmtTime(h.t), h.overall, h.rank, (h.tech === null || h.tech === undefined) ? '' : h.tech, h.coverage || 0
+    ].map(csvCell).join(',')));
+    lines.push('');
+  }
   downloadText('名无界数据_' + d.domain + '_' + new Date().toISOString().slice(0, 10) + '.csv',
     '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8');
   toast('CSV 已导出（含 BOM，Excel 打开中文不乱码）');
@@ -1239,7 +1898,7 @@ function selectPlan(key) {
     '<p class="small muted">内测期支付通道尚未开通：点击下方按钮即视为预约席位，正式上线前 48 小时通知你再决定是否付费，期间一切功能免费。</p>' +
     '<div class="copy-row"><button class="btn btn-primary" onclick="reservePlan(\'' + key + '\')">' + esc(p.cta) + '</button>' +
     '<button class="btn btn-ghost" onclick="closeModal()">再想想</button></div>';
-  $('modal').classList.remove('hidden');
+  openModalUI();
 }
 function reservePlan(key) {
   closeModal();
@@ -1248,7 +1907,7 @@ function reservePlan(key) {
 }
 function openLegal(kind) {
   $('modal-body').innerHTML = LEGAL[kind] || '';
-  $('modal').classList.remove('hidden');
+  openModalUI();
 }
 function openMethodology() {
   $('modal-body').innerHTML = '<h3 style="margin-bottom:12px">AI 可见性分 · 评分口径</h3>' +
@@ -1259,7 +1918,7 @@ function openMethodology() {
     '· 提及排位（越靠前分越高）—— 权重 <b style="color:var(--cyan-soft)">20%</b><br><br>' +
     '加权得出单平台得分（0–100），再取 7 平台平均值即总分。所有明细在工作台「AI 搜索 GEO」可逐项查看。<br><br>' +
     '<b style="color:var(--text)">为什么公开口径：</b>市面上 GEO 工具普遍不告诉你分数怎么来的。我们认为只有口径透明，你才能判断这个分数的变化是否值得信。</p>';
-  $('modal').classList.remove('hidden');
+  openModalUI();
 }
 function openTerm(key) {
   const g = GLOSSARY[key];
@@ -1269,7 +1928,7 @@ function openTerm(key) {
     '<div class="card-sub" style="margin-bottom:14px">' + esc(g.t) + '</div>' +
     '<p style="font-size:14.5px;line-height:1.85">' + esc(g.d) + '</p>' +
     '<div class="copy-row"><button class="btn btn-ghost btn-sm" onclick="closeModal()">知道了</button></div>';
-  $('modal').classList.remove('hidden');
+  openModalUI();
 }
 function openHelp() {
   $('modal-body').innerHTML = '<div class="modal-kicker">需要帮助</div>' +
@@ -1280,22 +1939,83 @@ function openHelp() {
     '· <b style="color:var(--text)">技术底座：</b><a class="inline-link" href="https://github.com/GT-AI-3396815/mingwujie" target="_blank" rel="noopener">本项目仓库</a> · OpenSEO · GEO/AEO Tracker（均为 MIT 开源）<br><br>' +
     '<b style="color:var(--text)">内测期响应：</b>工作日 24 小时内回复。正式版将提供微信客服与电话支持。</p>' +
     '<div class="copy-row"><button class="btn btn-ghost btn-sm" onclick="closeModal()">关闭</button></div>';
-  $('modal').classList.remove('hidden');
+  openModalUI();
 }
-function closeModal() { $('modal').classList.add('hidden'); }
+/* 无障碍：可聚焦元素收集 + 弹窗焦点陷阱 */
+function focusables(root) {
+  if (!root || !root.querySelectorAll) return [];
+  const sel = 'button,a[href],input,textarea,select,[tabindex]:not([tabindex="-1"])';
+  let list = [];
+  try { list = Array.prototype.slice.call(root.querySelectorAll(sel)); } catch (e) { list = []; }
+  return list.filter(function (el) { return !el.disabled && el.offsetParent !== null; });
+}
+function openModalUI() {
+  const m = $('modal'); if (!m) return;
+  if (!state.lastFocus) state.lastFocus = document.activeElement;
+  m.classList.remove('hidden');
+  setTimeout(function () {
+    const f = focusables(m);
+    if (f.length) { try { f[0].focus(); } catch (e) { } }
+  }, 30);
+}
+function closeModal() {
+  const m = $('modal'); if (m) m.classList.add('hidden');
+  const back = state.lastFocus;
+  state.lastFocus = null;
+  if (back && back.focus) { try { back.focus(); } catch (e) { } }
+}
+function trapTab(e) {
+  const m = $('modal');
+  if (!m || m.classList.contains('hidden')) return false;
+  const f = focusables(m);
+  if (f.length < 2) return false;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); return true; }
+  if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); return true; }
+  return false;
+}
 
-/* ----------------------- toast ----------------------- */
-let toastTimer;
+/* toast 队列：多条提示依次显示，不再互相打断 */
+let toastQ = [], toastBusy = false;
 function toast(msg) {
-  const t = $('toast'); if (!t) return;
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3400);
+  toastQ.push(msg);
+  if (!toastBusy) nextToast();
+}
+function nextToast() {
+  const t = $('toast'); if (!t) { toastBusy = false; toastQ = []; return; }
+  if (!toastQ.length) { toastBusy = false; t.classList.remove('show'); return; }
+  toastBusy = true;
+  t.textContent = toastQ.shift();
+  t.classList.add('show');
+  setTimeout(function () {
+    t.classList.remove('show');
+    setTimeout(nextToast, 240);
+  }, 2800);
+}
+
+/* 回到顶部 */
+function initScrollTop() {
+  const m = mainEl();
+  const btn = $('toTop');
+  if (!btn) return;
+  const onScroll = () => {
+    const y = (m && m.scrollHeight > m.clientHeight + 8) ? m.scrollTop : (window.scrollY || 0);
+    btn.classList.toggle('hidden', y < 420);
+  };
+  if (m && m.addEventListener) m.addEventListener('scroll', onScroll, { passive: true });
+  if (window.addEventListener) window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+}
+function scrollTopNow() {
+  const m = mainEl();
+  if (m && m.scrollHeight > m.clientHeight + 8 && m.scrollTo) m.scrollTo({ top: 0, behavior: 'smooth' });
+  else if (window.scrollTo) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /* ----------------------- 启动 ----------------------- */
 window.addEventListener('DOMContentLoaded', () => {
   // 事件绑定
-  document.querySelectorAll('[data-open-wb]').forEach(b => b.addEventListener('click', openWorkbench));
+  document.querySelectorAll('[data-open-wb]').forEach(b => b.addEventListener('click', () => openWorkbench()));
   document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.view)));
   document.querySelectorAll('[data-plan]').forEach(b => b.addEventListener('click', () => selectPlan(b.dataset.plan)));
   document.querySelectorAll('[data-legal]').forEach(b => b.addEventListener('click', (e) => { e.preventDefault(); openLegal(b.dataset.legal); }));
@@ -1309,9 +2029,19 @@ window.addEventListener('DOMContentLoaded', () => {
   const bt = $('bossToggle'); if (bt) bt.addEventListener('click', toggleBoss);
   const dl = $('f-domain'); if (dl) dl.addEventListener('input', () => validateDomain(true));
   const ss = $('siteSelect'); if (ss) ss.addEventListener('change', () => switchSite(ss.value));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+  const tb = $('toTop'); // 滚动按钮由 initScrollTop 控制显隐
 
-  // 恢复上次检测（v0.3：刷新不再丢数据）
+  // 键盘：Esc 关弹窗、Tab 在弹窗内循环
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { if (!$('modal').classList.contains('hidden')) closeModal(); return; }
+    if (e.key === 'Tab') trapTab(e);
+  });
+
+  // 路由：浏览器前进 / 后退
+  window.addEventListener('hashchange', applyRoute);
+  window.addEventListener('popstate', applyRoute);
+
+  // 恢复上次检测（刷新不丢数据、也不丢当前页面）
   const has = loadStore();
   renderSites();
   if (has && store.current) {
@@ -1326,8 +2056,7 @@ window.addEventListener('DOMContentLoaded', () => {
       $('wb-brand').textContent = state.data.brand;
       $('scan-form').classList.add('hidden');
       $('wb-content').classList.remove('hidden');
-      showDemoMarks();
-      // 打开展示到工作台时，先留在落地页，由用户点「进入工作台」查看
+      showDemoMarks(site.audit);
       renderAll();
       const back = $('resumeBar');
       if (back) {
@@ -1336,6 +2065,9 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
   }
+  // 按当前地址决定落地页还是工作台（支持刷新后停留原视图）
+  applyRoute();
+  initScrollTop();
 });
 
 /* 供 HTML 内联事件使用 */
@@ -1351,3 +2083,6 @@ window.openMethodology = openMethodology; window.openTerm = openTerm; window.ope
 window.fillSample = fillSample; window.resetScan = resetScan; window.switchSite = switchSite;
 window.removeCurrentSite = removeCurrentSite; window.clearAllData = clearAllData; window.copyText = copyText;
 window.openUrlSafe = openUrlSafe;
+window.rerunAudit = rerunAudit; window.pasteAuditLLMs = pasteAuditLLMs; window.pasteAuditRobots = pasteAuditRobots;
+window.pasteAuditHtml = pasteAuditHtml; window.scrollTopNow = scrollTopNow;
+window.renderAll = renderAll; window.renderCurrent = renderCurrent; window.switchSite = switchSite;
